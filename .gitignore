@@ -1,0 +1,46 @@
+# ---------- 游戏与运行数据（体积巨大，且可能含账号信息） ----------
+.minecraft/
+HugeInsaneLauncher/cache/
+HugeInsaneLauncher/logs/
+HugeInsaneLauncher/update/
+HugeInsaneLauncher/config.ini
+HugeInsaneLauncher/accounts.json
+
+# ---------- 本地发布副本：由 GitHub Releases 提供 ----------
+website/HugeInsaneLauncher.exe
+
+# ---------- 素材 / 备份（不入库） ----------
+tmp/
+tmp2/
+video/
+参考视频/
+回滚/
+promo/*.mp4
+promo/*.webm
+
+# ---------- 构建产物 ----------
+*.exe
+*.pdb
+*.obj
+*.dll
+HugeInsaneLauncher_*.cs
+HugeInsaneLauncher/tools/lan-agent/build/
+HugeInsaneLauncher/tools/lan-agent/test-*/
+HugeInsaneLauncher/tools/lan-agent/tn/
+HugeInsaneLauncher/tools/lan-agent/to/
+HugeInsaneLauncher/tools/hgl-relay/.wrangler/
+
+# ---------- 第三方 ----------
+# PCL2 源码快照仅作设计参考，其许可证不允许转载
+HugeInsaneLauncher/docs/ref/PCL-main/
+# authlib-injector 为 AGPL-3.0，运行时按需下载，不随仓库分发
+authlib-injector.jar
+**/node_modules/
+
+# ---------- 编辑器 / 系统 ----------
+.vs/
+.idea/
+*.user
+*.suo
+Thumbs.db
+desktop.ini

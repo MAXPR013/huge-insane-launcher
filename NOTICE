@@ -1,0 +1,29 @@
+# 第三方组件与来源说明
+
+HIL 本体的源码以 MIT 许可证发布（见 `LICENSE`）。本文件说明仓库中出现的
+第三方内容、外部服务，以及**仓库不包含**的东西。
+
+## 仓库中不包含的第三方组件
+
+| 组件 | 许可证 | 说明 |
+|---|---|---|
+| [authlib-injector](https://github.com/yushijinhun/authlib-injector) | **AGPL-3.0** | 外置登录（Yggdrasil）补丁。仓库**不分发**该 jar；程序首次使用外置登录时从官方 / BMCLAPI 镜像下载到本地 `HugeInsaneLauncher/authlib-injector.jar`。相关代码见 `src/Accounts.cs`。 |
+| PCL2（Plain Craft Launcher 2） | PCL 分发有限许可 | 仅作为**界面设计参考**，`docs/ref/PCL-main/` 源码快照**未收录**进本仓库。致谢原作者龙腾猫跃。 |
+
+## 外部服务与 API
+
+- **Mojang / Microsoft**：游戏版本清单、资源与库文件下载。
+- **Fabric / Forge / NeoForge**：加载器安装清单。
+- **Modrinth**：模组、资源包、光影、整合包、数据包的搜索与下载。
+- **DeepSeek / 智谱 GLM**：AI 助手「H史」的模型服务（可选，需自备 Key 或使用官网内置免费通道）。
+
+## 素材版权
+
+- Minecraft 相关的方块贴图（`HugeInsaneLauncher/Images/Blocks/`、`Loaders/`）与
+  角色形象版权归 **Mojang Studios / Microsoft** 所有，此处仅作界面装饰用途。
+- 其余截图、图标与宣传素材由本项目作者制作。
+
+## 游戏本体
+
+本仓库**不包含** Minecraft 游戏本体、Java 运行时或任何账号凭证。
+使用本启动器前，请通过官方渠道购买并拥有 Minecraft。

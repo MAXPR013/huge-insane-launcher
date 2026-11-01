@@ -1,0 +1,52 @@
+name: build
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 编译（.NET Framework csc）
+        shell: cmd
+        run: cmd /c build.bat
+
+      - name: 合并单文件版
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}".TrimStart('v')
+          python HugeInsaneLauncher\tools\merge_single.py $ver
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: HugeInsaneLauncher
+          path: |
+            HugeInsaneLauncher.exe
+            HugeInsaneLauncher_*.cs
+          if-no-files-found: error
+
+      - name: 发布 Release（仅打 tag 时）
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: HugeInsaneLauncher.exe
+          generate_release_notes: true
+          body: |
+            Huge Insane Launcher ${{ github.ref_name }}
+
+            - 免安装：下载 exe 双击即可运行
+            - 首次启动会在 exe 同目录生成 `.minecraft/` 与 `HugeInsaneLauncher/`
+            - 完整说明见 README.md

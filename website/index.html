@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<!-- ============================================================
+  Huge Insane Launcher 官网（单文件，零依赖，Cloudflare Pages 直接部署）
+  ★ 发新版改三处：① 两个下载按钮的版本号文字 ② 截图角标 ③ exe 文件替换
+  ★ 待补充：① 搜索 YOUR_WEB3FORMS_KEY 替换为 Web3Forms access key（两处）
+             ② 赞赏码图片放进本目录后替换「赞助」区占位框
+  ★ 自动调色：与启动器同款，7:00-19:00 亮色、其余暗色（head 内联脚本，无需维护）
+============================================================ -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Huge Insane Launcher - HIL 官网</title>
+<meta name="description" content="HIL - 545KB 单文件 Minecraft 启动器：iOS 液态玻璃、H史 AI 助手、一键开服、服务器大厅。">
+<link rel="icon" href="hil.ico">
+<script>
+/* 自动调色（与启动器同款）：白天 7:00-19:00 亮色，其余时间暗色；每 5 分钟对一次表。
+   放在 head 内联执行：body 渲染前先上好肤色，白天打开不会先闪一帧黑 */
+(function(){function t(){var h=new Date().getHours();document.documentElement.classList.toggle("light",h>=7&&h<19);}t();setInterval(t,3e5);})();
+</script>
+<style>
+  :root{
+    --bg:#14161D; --tile-a:#0E1016; --tile-b:#191C24;
+    --panel:rgba(255,255,255,.045); --line:rgba(255,255,255,.09);
+    --text:#F5F5F7; --dim:#A1A1A6; --dim2:#6E727C;
+    --accent:#4F8FDF; --accent2:#6FA5EC;
+    --head-bg:rgba(16,18,24,.72); --nav-link:#E8EAF0;
+    --h1-grad:linear-gradient(180deg,#fff,#C9D6EC);
+    --shot-line:rgba(255,255,255,.12);
+    --shot-shadow:0 40px 110px rgba(0,0,0,.6),0 0 90px rgba(79,143,223,.14);
+    --input-bg:#0C0E13;
+    --toast-bg:rgba(24,28,38,.92); --toast-color:#fff; --toast-shadow:0 10px 34px rgba(0,0,0,.5);
+    --qr-mid:rgba(20,22,29,.55); --qr-edge:#14161D; --qr-dash:rgba(255,255,255,.22);
+    --feat-hover:rgba(255,255,255,.07);
+    --demo-bg:rgba(0,0,0,.28);
+    --head-h:48px;
+    color-scheme:dark;
+  }
+  /* 亮色板（自动调色·白天）：与启动器亮色同一套观感 */
+  html.light{
+    --bg:#EDF0F6; --tile-a:#FFFFFF; --tile-b:#F3F5FA;
+    --panel:rgba(23,32,48,.05); --line:rgba(23,32,48,.13);
+    --text:#23252C; --dim:#565E6E; --dim2:#868DA0;
+    --accent:#3B7DD8; --accent2:#2F6CD0;
+    --head-bg:rgba(245,247,251,.78); --nav-link:#39404E;
+    --h1-grad:linear-gradient(180deg,#151B27,#40608C);
+    --shot-line:rgba(23,32,48,.16);
+    --shot-shadow:0 30px 80px rgba(70,80,100,.28),0 0 90px rgba(79,143,223,.12);
+    --input-bg:#FFFFFF;
+    --toast-bg:rgba(255,255,255,.94); --toast-color:#23252C; --toast-shadow:0 10px 30px rgba(70,80,100,.3);
+    --qr-mid:rgba(237,240,246,.55); --qr-edge:#EDF0F6; --qr-dash:rgba(23,32,48,.28);
+    --feat-hover:rgba(23,32,48,.05);
+    --demo-bg:#12151C;
+    color-scheme:light;
+  }
+  /* 换肤时刻颜色柔和滑动（demo 小窗、按钮自带动画的除外） */
+  body,header#topbar,.tile,.fb-card,#final{transition:background-color .5s ease,border-color .5s ease,color .5s ease}
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:"SF Pro Display","Microsoft YaHei UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+    background:var(--bg); color:var(--text); min-height:100vh; overflow-x:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{text-decoration:none;color:inherit}
+  section{scroll-margin-top:calc(var(--head-h) + 10px)}
+
+  /* ========== 置顶导航 + 分段指示条 ========== */
+  header#topbar{
+    position:fixed; inset:0 0 auto 0; z-index:100;
+    background:var(--head-bg);
+    backdrop-filter:blur(20px) saturate(1.8); -webkit-backdrop-filter:blur(20px) saturate(1.8);
+    border-bottom:1px solid var(--line);
+  }
+  .nav{
+    max-width:1024px; margin:0 auto; height:var(--head-h);
+    display:flex; align-items:center; gap:10px; padding:0 22px;
+  }
+  .nav img{width:24px;height:24px;border-radius:6px}
+  .nav .name{font-weight:600;font-size:14px;letter-spacing:.2px;white-space:nowrap}
+  .nav .links{display:flex; gap:26px; margin-left:auto; position:relative; height:100%; align-items:center}
+  .nav .links a{font-size:12.5px;color:var(--nav-link);opacity:.85;transition:opacity .15s,color .15s;display:flex;align-items:center;height:100%}
+  .nav .links a:hover{opacity:1;color:var(--accent2)}
+  .nav .links a.on{opacity:1}
+  .nav .under{
+    position:absolute;bottom:4px;height:3px;border-radius:2px;left:0;width:0;
+    background:var(--accent);box-shadow:0 0 10px rgba(79,143,223,.9),0 0 26px rgba(79,143,223,.45);
+    transition:left .38s cubic-bezier(.32,.72,.24,1),width .38s cubic-bezier(.32,.72,.24,1);
+    pointer-events:none;
+  }
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    border:none;cursor:pointer;font-family:inherit;
+    background:var(--accent);color:#fff;border-radius:999px;font-weight:600;
+    transition:transform .18s,box-shadow .18s,background .18s;
+    box-shadow:0 4px 18px rgba(79,143,223,.35);
+  }
+  .btn:hover{background:var(--accent2);transform:translateY(-2px);box-shadow:0 8px 26px rgba(79,143,223,.5)}
+  .btn:active{transform:translateY(0)}
+  .btn.nav-dl{padding:6px 16px;font-size:12.5px;margin-left:26px}
+
+  /* ========== 首屏 · 简介 ========== */
+  #intro{
+    min-height:100vh; padding:calc(var(--head-h) + 56px) 22px 0;
+    display:flex;flex-direction:column;align-items:center;text-align:center;
+    background:radial-gradient(900px 480px at 50% -8%, rgba(79,143,223,.16), transparent 65%);
+  }
+  .eyebrow{
+    display:inline-block;padding:5px 14px;border-radius:999px;font-size:12px;
+    color:var(--accent2);border:1px solid rgba(79,143,223,.4);background:rgba(79,143,223,.10);
+  }
+  #intro h1{
+    margin-top:26px;font-size:72px;line-height:1.12;padding-bottom:.14em;font-weight:700;letter-spacing:-.02em;
+    background:var(--h1-grad);-webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  #intro .sub{margin-top:16px;font-size:26px;font-weight:400;color:var(--dim)}
+  .cta-row{margin-top:34px;display:flex;align-items:center;gap:26px}
+  .btn.hero-dl{padding:14px 34px;font-size:17px;animation:breathe 3.2s ease-in-out infinite}
+  @keyframes breathe{
+    0%,100%{box-shadow:0 4px 18px rgba(79,143,223,.35)}
+    50%{box-shadow:0 6px 30px rgba(79,143,223,.6)}
+  }
+  .more-link{font-size:15px;color:var(--accent2);transition:opacity .15s}
+  .more-link:hover{opacity:.75}
+  .reassure{margin-top:14px;font-size:12px;color:var(--dim2);letter-spacing:.3px}
+  .hero-shot{
+    position:relative;margin-top:56px;width:min(70vw,880px);
+    border-radius:16px;border:1px solid var(--shot-line);
+    box-shadow:var(--shot-shadow);
+    overflow:hidden;
+  }
+  .hero-shot img{display:block;width:100%}
+  /* 双色截图：跟随自动调色换图（深色默认，亮色 html.light 下换出） */
+  .hero-shot .shot-l{display:none}
+  html.light .hero-shot .shot-d{display:none}
+  html.light .hero-shot .shot-l{display:block}
+  .hero-shot .ver-badge{
+    position:absolute;top:14px;right:14px;padding:4px 12px;border-radius:8px;
+    background:var(--accent);color:#fff;font-size:11px;font-weight:700;
+    box-shadow:0 4px 14px rgba(0,0,0,.4);
+  }
+  .numbers{
+    margin:64px 0 0;padding:26px 0;width:100%;max-width:880px;
+    display:flex;justify-content:space-around;gap:12px;flex-wrap:wrap;
+    border-top:1px solid var(--line);
+  }
+  .numbers .n b{display:block;font-size:30px;font-weight:700;letter-spacing:-.01em}
+  .numbers .n span{font-size:12.5px;color:var(--dim2)}
+  .scroll-cue{
+    margin:auto 0 26px;color:var(--dim2);font-size:22px;cursor:pointer;
+    animation:cue 2.2s ease-in-out infinite;user-select:none;
+  }
+  @keyframes cue{0%,100%{transform:translateY(0);opacity:.5}50%{transform:translateY(7px);opacity:1}}
+
+  /* ========== 瓷砖通用 ========== */
+  .tiles{padding:12px 12px 0;display:flex;flex-direction:column;gap:12px}
+  .tile{
+    max-width:1120px;width:100%;margin:0 auto;border-radius:24px;overflow:hidden;
+    padding:76px 32px;text-align:center;position:relative;
+  }
+  .tile.dark{background:var(--tile-a)}
+  .tile.gray{background:var(--tile-b)}
+  .tile h2{font-size:40px;font-weight:600;letter-spacing:-.01em}
+  .tile .slogan{
+    display:inline-block;margin-top:14px;padding:4px 14px;border-radius:999px;font-size:13px;
+    color:var(--accent2);background:rgba(79,143,223,.12);border:1px solid rgba(79,143,223,.32);
+  }
+  .tile .desc{margin:16px auto 0;max-width:520px;font-size:15px;color:var(--dim);line-height:1.9}
+  .tile .tile-note{margin-top:12px;font-size:12px;color:var(--dim2)}
+  .tile .ic{font-size:36px;margin-bottom:12px}
+
+  /* 液态玻璃 demo（活底折射：胶囊内藏一份舞台副本，放大+微糊=肉眼可辨的折射） */
+  .glass-stage{
+    position:relative;margin:36px auto 0;max-width:640px;height:230px;border-radius:18px;
+    overflow:hidden;border:1px solid rgba(255,255,255,.1);touch-action:none;
+  }
+  .stage-inner,.pill-copy{
+    background:linear-gradient(120deg,#2b3f66,#4F8FDF 30%,#8a5fbf 62%,#c2577a);
+    background-size:220% 220%;animation:flow 14s ease-in-out infinite;
+  }
+  .stage-inner{position:absolute;inset:0}
+  /* 网格参照物：让边缘弯曲肉眼可见 */
+  .stage-grid{
+    position:absolute;inset:0;
+    background-image:linear-gradient(rgba(255,255,255,.09) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(255,255,255,.09) 1px,transparent 1px);
+    background-size:28px 28px;
+  }
+  @keyframes flow{0%,100%{background-position:0% 40%}50%{background-position:100% 60%}}
+  .grid-text{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-size:13px;color:rgba(255,255,255,.5);letter-spacing:4px;user-select:none;white-space:nowrap;
+  }
+  .glass-pill{
+    position:absolute;left:50%;top:50%;width:190px;height:58px;margin:-29px 0 0 -95px;
+    border-radius:999px;cursor:grab;overflow:hidden;user-select:none;will-change:transform;
+    background:rgba(255,255,255,.035);
+    border:1px solid rgba(255,255,255,.32);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.38),inset 0 -1px 0 rgba(255,255,255,.08),0 10px 34px rgba(0,0,0,.35);
+  }
+  .glass-pill:active{cursor:grabbing}
+  /* 视窗层与胶囊等大，位移滤镜打在这层——扭曲环才能贴着胶囊轮廓 */
+  .pill-view{
+    position:absolute;inset:0;
+    filter:url(#glassRefract) blur(.25px) saturate(1.25) brightness(1.04);
+    -webkit-filter:url(#glassRefract) blur(.25px) saturate(1.25) brightness(1.04);
+  }
+  .pill-copy{
+    position:absolute;pointer-events:none;
+    transform:scale(1.08);
+  }
+  .pill-label{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    color:#fff;font-size:13px;font-weight:600;letter-spacing:2px;
+    text-shadow:0 1px 6px rgba(0,0,0,.45);pointer-events:none;
+  }
+
+  /* 演示区（四块亮点瓷砖同款尺寸）。demo 区是"屏幕"，两色板下都保持深色，内容才不花 */
+  .demo{
+    position:relative;margin:36px auto 0;max-width:640px;height:230px;border-radius:18px;
+    overflow:hidden;border:1px solid rgba(255,255,255,.1);background:var(--demo-bg);
+  }
+  /* H史聊天示意 */
+  .chat-demo{display:flex;flex-direction:column;justify-content:center;gap:14px;padding:0 34px;text-align:left}
+  .chat-demo .msg{max-width:80%;padding:10px 16px;border-radius:16px;font-size:13px;line-height:1.7}
+  .chat-demo .msg.user{
+    align-self:flex-end;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);
+    color:#A1A1A6;border-bottom-right-radius:6px;
+  }
+  .chat-demo .msg.hst{
+    align-self:flex-start;background:var(--accent);color:#fff;border-bottom-left-radius:6px;
+    box-shadow:0 6px 20px rgba(79,143,223,.3);
+  }
+  /* 开服控制台示意 */
+  .con-demo{display:flex;align-items:center;padding:0 26px;text-align:left}
+  .con-demo pre{font-family:Consolas,monospace;font-size:12.5px;line-height:2.05;color:#C9D1D9;white-space:pre-wrap}
+  .con-demo .hl{color:var(--accent2)}
+  .con-demo .ok{color:#4CD964}
+  .con-demo .cur{animation:blink 1.1s steps(1) infinite;color:var(--accent2)}
+  @keyframes blink{50%{opacity:0}}
+  /* 服务器大厅示意 */
+  .srv-stage{display:flex;align-items:center;justify-content:center}
+  .srv-stage .srv-demo{margin:0}
+  /* 悬浮球示意（截图是分层窗口黑底，演示区用纯黑无缝融入） */
+  .ball-stage{display:flex;align-items:center;justify-content:center;background:#000}
+  .ball-stage img{max-width:100%;max-height:100%;border-radius:12px;
+    box-shadow:0 12px 40px rgba(0,0,0,.4)}
+
+  /* 明暗双色 demo（活的换肤：整个迷你窗在两块真实色板间渐变，点一下手动翻） */
+  .theme-stage{display:flex;flex-direction:column;align-items:center;justify-content:center;background:transparent;border:none;cursor:pointer}
+  .tmock{width:460px;max-width:94%;border-radius:14px;overflow:hidden;
+    background:#1B1E27;border:1px solid #3A3F4E;box-shadow:0 14px 44px rgba(0,0,0,.35);
+    transition:background .55s,border-color .55s,box-shadow .55s}
+  .tbar{display:flex;align-items:center;gap:6px;padding:9px 12px;border-bottom:1px solid #3A3F4E;transition:border-color .55s}
+  .tdot{width:8px;height:8px;border-radius:50%;background:#3A3F4E;transition:background .55s}
+  .ttitle{margin-left:6px;font-weight:600;font-size:12px;color:#E8E8E8;transition:color .55s;flex:1}
+  .tswitch{width:34px;height:19px;border-radius:999px;background:#3A3F4E;position:relative;flex:none;transition:background .55s}
+  .tknob{position:absolute;left:2px;top:2px;width:15px;height:15px;border-radius:50%;background:#fff;transition:left .35s cubic-bezier(.3,1.4,.5,1)}
+  .theme-stage.light .tswitch{background:#55C45A}
+  .theme-stage.light .tknob{left:17px}
+  .tbody{display:flex;gap:14px;padding:14px}
+  .tside{width:158px;flex:none}
+  .tinput{padding:6px 9px;border-radius:6px;font-size:11px;background:#000;color:#E8E8E8;border:1px solid #3A3F4E;transition:background .55s,color .55s,border-color .55s}
+  .tbtn-row{display:flex;gap:6px;margin-top:10px}
+  .tbtn{flex:1;text-align:center;padding:5px 0;border-radius:6px;background:#2A2E3A;color:#E8E8E8;font-size:11px;transition:background .55s,color .55s}
+  .tlaunch{margin-top:10px;text-align:center;padding:7px 0;border-radius:8px;background:#55C45A;color:#14161D;font-weight:700;font-size:12px}
+  .tmain{flex:1;min-width:0}
+  .tline{height:9px;border-radius:5px;background:#2A2E3A;margin-bottom:10px;transition:background .55s}
+  .tline.w60{width:60%}.tline.w80{width:80%}.tline.w45{width:45%}
+  .tslider{position:relative;height:5px;border-radius:3px;background:#3A3F4E;margin:14px 0 16px;transition:background .55s}
+  .tfill{position:absolute;left:0;top:0;bottom:0;width:55%;border-radius:3px;background:#55C45A}
+  .tthumb{position:absolute;left:55%;top:50%;width:13px;height:13px;margin:-6.5px 0 0 -6.5px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+  .ttip{margin-top:12px;font-size:11px;color:var(--dim)}
+  /* 亮色态 = 启动器真实亮色板 */
+  .theme-stage.light .tmock{background:#F5F7FB;border-color:#CBD0DC;box-shadow:0 14px 44px rgba(90,100,120,.25)}
+  .theme-stage.light .tbar{border-color:#CBD0DC}
+  .theme-stage.light .tdot{background:#CBD0DC}
+  .theme-stage.light .ttitle{color:#23252C}
+  .theme-stage.light .tinput{background:#FFF;color:#23252C;border-color:#CBD0DC}
+  .theme-stage.light .tbtn{background:#E6E9F1;color:#23252C}
+  .theme-stage.light .tline{background:#E6E9F1}
+  .theme-stage.light .tslider{background:#CBD0DC}
+
+  /* 服务器大厅迷你卡（长在 demo"屏幕"里，固定深色系，不随换肤变） */
+  .srv-demo{
+    margin:30px auto 0;max-width:460px;text-align:left;
+    background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:14px;
+    padding:16px 18px;color:#E8EAF0;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  }
+  .srv-demo .row1{display:flex;align-items:center;gap:8px}
+  .srv-demo .dot{width:8px;height:8px;border-radius:50%;background:#4CD964;box-shadow:0 0 8px rgba(76,217,100,.8)}
+  .srv-demo .nm{font-weight:700;font-size:15px}
+  .srv-demo .badge{
+    padding:2px 9px;border-radius:999px;font-size:10.5px;
+    background:var(--accent);color:#fff;font-weight:600;
+  }
+  .srv-demo .meta{margin-top:8px;font-size:12px;color:#A1A1A6;display:flex;gap:14px;flex-wrap:wrap}
+  .srv-demo .cp{
+    margin-top:12px;padding:7px 0;width:100%;border-radius:9px;font-size:12.5px;
+    background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:#E8EAF0;
+    cursor:pointer;transition:background .15s,border-color .15s;font-family:inherit;
+  }
+  .srv-demo .cp:hover{background:rgba(79,143,223,.18);border-color:rgba(79,143,223,.5)}
+
+  /* ========== 功能网格 ========== */
+  #features{padding:96px 22px 40px;max-width:1024px;margin:0 auto}
+  .sec-title{font-size:44px;font-weight:600;text-align:center;letter-spacing:-.01em}
+  .sec-sub{text-align:center;color:var(--dim);font-size:15px;margin:12px 0 46px}
+  .feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .feat{
+    background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:26px 22px;
+    transition:transform .18s,border-color .18s,background .18s;
+  }
+  .feat:hover{transform:translateY(-4px);border-color:rgba(79,143,223,.45);background:var(--feat-hover)}
+  .feat .ic{font-size:22px}
+  .feat h3{font-size:15px;margin:10px 0 8px}
+  .feat p{font-size:13px;color:var(--dim);line-height:1.75}
+
+  /* ========== 答疑手风琴 ========== */
+  #faq{max-width:760px;margin:0 auto;padding:80px 22px 40px}
+  .qa{border-bottom:1px solid var(--line)}
+  .qa:first-of-type{border-top:1px solid var(--line)}
+  .qa .q{
+    width:100%;background:none;border:none;color:var(--text);font-family:inherit;
+    display:flex;align-items:center;justify-content:space-between;gap:16px;
+    padding:22px 4px;font-size:17px;font-weight:600;cursor:pointer;text-align:left;
+    transition:color .15s;
+  }
+  .qa .q:hover{color:var(--accent2)}
+  .qa .q .ch{flex:none;font-size:20px;font-weight:300;color:var(--dim);transition:transform .3s}
+  .qa.open .q .ch{transform:rotate(45deg)}
+  .qa .a{max-height:0;overflow:hidden;transition:max-height .38s cubic-bezier(.32,.72,.24,1)}
+  .qa .a p{padding:0 4px 24px;font-size:14px;color:var(--dim);line-height:1.9}
+
+  /* ========== 赞助 ========== */
+  #sponsor{max-width:760px;margin:0 auto;padding:80px 22px 40px;text-align:center}
+  .qr-row{display:flex;gap:20px;justify-content:center;margin-top:36px;flex-wrap:wrap}
+  .qr{
+    width:200px;height:200px;border-radius:18px;border:1.5px dashed var(--qr-dash);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+    color:var(--dim2);font-size:13px;background:var(--panel);
+  }
+  /* 真实赞赏码：边缘径向渐变融入页面底色（渐变起点让开三个定位圈，不影响扫码） */
+  .qr-live{border:none;background:none;position:relative;overflow:hidden}
+  .qr-live img{width:100%;height:100%;object-fit:cover;border-radius:17px;display:block}
+  .qr-live::after{
+    content:"";position:absolute;inset:0;pointer-events:none;border-radius:17px;
+    background:radial-gradient(circle closest-side at 50% 50%, transparent 68%, var(--qr-mid) 84%, var(--qr-edge) 97%);
+  }
+  .fineprint{margin-top:22px;font-size:12px;color:var(--dim2)}
+
+  /* ========== 反馈表单 ========== */
+  #feedback{max-width:1024px;margin:0 auto;padding:80px 22px 40px}
+  .fb-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .fb-card{
+    background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:26px 24px;
+  }
+  .fb-card h3{font-size:17px;margin-bottom:6px}
+  .fb-card .tip{font-size:12.5px;color:var(--dim2);margin-bottom:16px;line-height:1.7}
+  .fb-card textarea,.fb-card input[type=text]{
+    width:100%;border-radius:10px;border:1px solid var(--line);
+    background:var(--input-bg);color:var(--text);font-family:inherit;font-size:13.5px;
+    padding:11px 13px;outline:none;resize:vertical;transition:border-color .15s,background-color .5s ease,color .5s ease;
+  }
+  .fb-card textarea{min-height:96px;line-height:1.7}
+  .fb-card input[type=text]{margin-top:10px}
+  .fb-card textarea:focus,.fb-card input[type=text]:focus{border-color:rgba(79,143,223,.6)}
+  .fb-card .btn{margin-top:14px;padding:9px 24px;font-size:13.5px}
+  .fb-card .btn[disabled]{opacity:.55;cursor:default;transform:none}
+  .hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+
+  /* ========== 收尾 + 页脚 ========== */
+  #final{
+    margin-top:96px;padding:110px 22px;text-align:center;background:var(--tile-a);
+  }
+  #final h2{font-size:46px;font-weight:700;letter-spacing:-.01em}
+  #final .btn{margin-top:30px;padding:15px 38px;font-size:17px}
+  #final p{margin-top:16px;font-size:12.5px;color:var(--dim2)}
+  footer{
+    border-top:1px solid var(--line);padding:34px 22px 44px;
+    max-width:1024px;margin:0 auto;color:var(--dim2);font-size:12px;line-height:2.1;
+  }
+
+  /* ========== Toast ========== */
+  #toast{
+    position:fixed;left:50%;bottom:34px;transform:translate(-50%,16px);
+    padding:11px 22px;border-radius:12px;font-size:13.5px;z-index:200;
+    background:var(--toast-bg);border:1px solid rgba(79,143,223,.5);color:var(--toast-color);
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    opacity:0;pointer-events:none;transition:opacity .3s,transform .3s;
+    box-shadow:var(--toast-shadow);
+  }
+  #toast.show{opacity:1;transform:translate(-50%,0)}
+
+  /* ========== 入场动画 ========== */
+  .rv{opacity:0;transform:translateY(26px);transition:opacity .7s ease,transform .7s cubic-bezier(.22,.8,.3,1)}
+  .rv.in{opacity:1;transform:none}
+  @media (prefers-reduced-motion:reduce){.rv{transition:none;opacity:1;transform:none}html{scroll-behavior:auto}}
+
+  /* ========== 移动端 ========== */
+  @media (max-width:760px){
+    .nav .links{display:none}
+    .btn.nav-dl{margin-left:auto}
+    #intro h1{font-size:40px}
+    #intro .sub{font-size:18px}
+    .hero-shot{width:94vw}
+    .tile h2{font-size:30px}
+    .fb-grid{grid-template-columns:1fr}
+    .feat-grid{grid-template-columns:1fr}
+    .sec-title{font-size:32px}
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= 置顶导航 ================= -->
+<header id="topbar">
+  <div class="nav">
+    <img src="hil.ico" alt="HIL">
+    <span class="name">Huge Insane Launcher</span>
+    <div class="links" id="navLinks">
+      <a href="#intro" class="on">简介</a><a href="#highlights">亮点</a><a href="#features">功能</a>
+      <a href="#faq">答疑</a><a href="#sponsor">赞助</a><a href="#feedback">反馈</a>
+      <i class="under" id="navUnder"></i>
+    </div>
+    <a class="btn nav-dl" href="HugeInsaneLauncher.exe" download="HugeInsaneLauncher-26.8.14-Alpha.exe">⬇ 下载</a>
+  </div>
+</header>
+
+<!-- ================= 简介 ================= -->
+<section id="intro">
+  <span class="eyebrow rv">社区驱动 · 离线模式 · By MAX</span>
+  <h1 class="rv">Huge Insane Launcher</h1>
+  <p class="sub rv">545KB 单文件，双击即玩的 Minecraft 启动器</p>
+  <div class="cta-row rv">
+    <a class="btn hero-dl" href="HugeInsaneLauncher.exe" download="HugeInsaneLauncher-26.8.14-Alpha.exe">⬇ 下载</a>
+    <a class="more-link" href="#highlights">看看亮点 &gt;</a>
+  </div>
+  <p class="reassure rv">免费 · 免安装 · 离线可玩 · Windows</p>
+  <div class="hero-shot rv">
+    <img class="shot-d" src="screenshot-dark.png" alt="HIL 界面截图（深色）">
+    <img class="shot-l" src="screenshot-light.png" alt="HIL 界面截图（浅色）">
+    <span class="ver-badge">26.8.14 Alpha</span>
+  </div>
+  <div class="numbers rv">
+    <div class="n"><b>545KB</b><span>单文件体积</span></div>
+    <div class="n"><b>5 种</b><span>服务端核心</span></div>
+    <div class="n"><b>51 个</b><span>源文件</span></div>
+    <div class="n"><b>¥0</b><span>永久免费</span></div>
+  </div>
+  <div class="scroll-cue" id="scrollCue">⌄</div>
+</section>
+
+<!-- ================= 亮点 ================= -->
+<section id="highlights">
+  <div class="tiles">
+
+    <div class="tile dark rv">
+      <div class="ic">💎</div>
+      <h2>iOS 液态玻璃</h2>
+      <div><span class="slogan">清晰透彻，MC 启动器界面的新标杆</span></div>
+      <p class="desc">按钮、滑钮、指示框全部实时折射背景，拖动带果冻形变，松手有弹簧回弹。口说无凭——下面这块玻璃就是活的，拖拖看。</p>
+      <div class="glass-stage" id="glassStage">
+        <div class="stage-inner"><div class="stage-grid"></div><div class="grid-text">实 时 折 射 · 实 时 折 射 · 实 时 折 射</div></div>
+        <div class="glass-pill" id="glassPill">
+          <div class="pill-view">
+            <div class="pill-copy" id="pillCopy"><div class="stage-grid"></div><div class="grid-text">实 时 折 射 · 实 时 折 射 · 实 时 折 射</div></div>
+          </div>
+          <span class="pill-label">拖 拖 看</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="tile dark rv">
+      <div class="ic">🌗</div>
+      <h2>明暗双色</h2>
+      <div><span class="slogan">白天亮色提神，深夜暗色护眼</span></div>
+      <p class="desc">从窗口到输入框、滑条、滚动条，一整套色板瞬间换完，切换带渐变过渡。再开「自动调色」，早上七点自己亮起来，晚上七点自己暗下去。</p>
+      <div class="demo theme-stage" id="themeStage">
+        <div class="tmock">
+          <div class="tbar"><span class="tdot"></span><span class="tdot"></span><span class="ttitle">Huge Insane Launcher</span><span class="tswitch"><span class="tknob"></span></span></div>
+          <div class="tbody">
+            <div class="tside">
+              <div class="tinput">MAX</div>
+              <div class="tbtn-row"><span class="tbtn">版本选择</span><span class="tbtn">设置</span></div>
+              <div class="tlaunch">启动！！</div>
+            </div>
+            <div class="tmain">
+              <div class="tline w60"></div>
+              <div class="tslider"><span class="tfill"></span><span class="tthumb"></span></div>
+              <div class="tline w80"></div>
+              <div class="tline w45"></div>
+            </div>
+          </div>
+        </div>
+        <div class="ttip">👆 点一点，亲手换个肤（不管它也会自己翻）</div>
+      </div>
+    </div>
+
+    <div class="tile gray rv">
+      <div class="ic">🤖</div>
+      <h2>AI 史蒂夫「H史」</h2>
+      <div><span class="slogan">你再也不用为崩溃而烦恼</span></div>
+      <p class="desc">驻在启动器底层的 AI 助手：崩溃主动分析、自动匹配兼容模组、一句话搜资源，还能拟人化地替你操作启动器。</p>
+      <p class="tile-note">注：AI 功能开箱即用（内置免费通道）；也可填入自己的 DeepSeek key，能力更强、不限额度</p>
+      <div class="demo chat-demo">
+        <div class="msg user">26.2 装了 sodium 启动就崩，咋办？</div>
+        <div class="msg hst">你遇到了游戏崩溃！需要我帮你解决吗？</div>
+      </div>
+    </div>
+
+    <div class="tile dark rv">
+      <div class="ic">🌐</div>
+      <h2>一键开服</h2>
+      <div><span class="slogan">你的腐竹梦，在 HIL 就能实现</span></div>
+      <p class="desc">选版本、点「开服！！」，Vanilla / Paper / Forge / Fabric / NeoForge 核心自动下载，内存端口自动分配，控制台直接敲命令。</p>
+      <div class="demo con-demo">
+        <pre>[15:20:41] <span class="hl">[HIL]</span> Paper 1.21.x 核心下载完成
+[15:20:42] <span class="hl">[HIL]</span> eula.txt 已写入 · 端口自动分配 25565
+[15:20:43] <span class="ok">[Server]</span> Done (3.2s)! For help, type "help"
+[15:20:43] <span class="hl">[HIL]</span> 服务器已启动 · 地址 192.168.1.5:25565 <span class="cur">▌</span></pre>
+      </div>
+    </div>
+
+    <div class="tile gray rv">
+      <div class="ic">🧭</div>
+      <h2>服务器大厅</h2>
+      <div><span class="slogan">你不用再为了找服务器跑遍百度</span></div>
+      <p class="desc">精选离线可进的公共服务器：名称、地址、介绍、在线人数、延迟、支持版本一目了然，点一下复制，进游戏直接粘贴。</p>
+      <div class="demo srv-stage">
+        <div class="srv-demo">
+          <div class="row1"><span class="dot"></span><span class="nm">mczero.top</span><span class="badge">HIL 作者在玩</span></div>
+          <div class="meta"><span>🟢 在线 32 人</span><span>📶 12ms</span><span>🎮 支持 26.2</span></div>
+          <button class="cp" id="srvCopy">📋 复制地址 mczero.top</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tile gray rv">
+      <div class="ic">🌍</div>
+      <h2>局域网联机 · 打通正版墙</h2>
+      <div><span class="slogan">「对局域网开放」，就是真正的联机</span></div>
+      <p class="desc">单人世界点对局域网开放，把游戏提示的端口填进 HIL，房间码立刻生成——朋友输入房间码，你的世界直接冒在他的局域网列表里。内置破墙补丁：离线账号也能进，不弹「无效会话」。隧道优先打洞直连，打不通自动走中继。</p>
+      <div class="demo con-demo">
+        <pre>[腐竹]  游戏内提示：本地游戏已在端口 <span class="hl">61234</span> 上开启
+[腐竹]  HIL 联机大厅 → 输入 61234 → 创建房间
+<span class="hl">[HIL]</span> 房间码 <span class="ok">K7X2M9</span> 已生成 · 打洞直连就绪
+<span class="hl">[HIL]</span> LAN 破墙已注入：离线玩家可直接加入
+[朋友]  输入 K7X2M9 → 世界出现在局域网列表 ✓<span class="cur">▌</span></pre>
+      </div>
+      <!-- TODO(截图): 腐竹说稍后补联机大厅截图，可替换上面的字符 demo -->
+    </div>
+
+    <div class="tile dark rv">
+      <div class="ic">🎈</div>
+      <h2>悬浮球</h2>
+      <div><span class="slogan">游戏一开，启动器收成一颗球</span></div>
+      <p class="desc">启动游戏或最小化后，主窗自动退成一颗史蒂夫小球：单击展开极简面板——H史聊天、下载进度、服务器日志都在球里；双击回到全窗，随手拖到屏幕任何角落。</p>
+      <div class="demo ball-stage">
+        <img src="floatball.png" alt="悬浮球：展开 H史 聊天面板">
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ================= 功能 ================= -->
+<section id="features">
+  <div class="sec-title rv">更多本领</div>
+  <div class="sec-sub rv">亮点之外，基本功同样扎实</div>
+  <div class="feat-grid">
+    <div class="feat rv"><div class="ic">🚀</div><h3>离线模式启动</h3><p>输入用户名即玩，无需正版账号。首次启动默认中文，历史用户名自动记住。</p></div>
+    <div class="feat rv"><div class="ic">📦</div><h3>全版本 + 加载器</h3><p>正式版、快照、远古版全量下载，确认页直接勾选 Forge / NeoForge / Fabric，自动匹配版本。</p></div>
+    <div class="feat rv"><div class="ic">🧩</div><h3>内置资源站</h3><p>模组、数据包、资源包、光影、整合包直连 Modrinth，按游戏版本筛选搜索，一键装进游戏。</p></div>
+    <div class="feat rv"><div class="ic">🪶</div><h3>545KB 单文件</h3><p>比主流启动器小一个数量级。双击后自动创建 .minecraft 与配置目录，拷到任何电脑都能用。</p></div>
+    <div class="feat rv"><div class="ic">🫧</div><h3>流动史莱姆</h3><p>从你桌面壁纸取色的色块在窗口底层互相挤压、融合、流动，瓷砖全部磨砂透视。背景/中层/前景三层模糊分管——桌面什么色，启动器就什么色。</p></div>
+    <div class="feat rv"><div class="ic">⚡</div><h3>低配设备优化</h3><p>全渲染管线为核显打磨过：零投影开销、卡片零重建切换、动画全速不掉帧。</p></div>
+    <div class="feat rv"><div class="ic">🕳️</div><h3>Huge 隧道</h3><p>自研内网穿透：TCP 打洞优先直连、打不通自动中转，开服与局域网联机都走它，房间码即联机门票。</p></div>
+    <div class="feat rv"><div class="ic">🛡️</div><h3>崩溃报告</h3><p>启动器与游戏崩溃自动捕捉，生成带解决方案的错误报告，敏感信息打码后可一键导出。</p></div>
+  </div>
+</section>
+
+<!-- ================= 答疑 ================= -->
+<section id="faq">
+  <div class="sec-title rv">常见问题</div>
+  <div class="sec-sub rv">点开就有答案</div>
+  <div class="qa rv"><button class="q">需要正版账号吗？<span class="ch">+</span></button>
+    <div class="a"><p>不需要。HIL 是离线模式启动器，输入任意用户名即可进入游戏，也无需注册任何 HIL 账号。</p></div></div>
+  <div class="qa rv"><button class="q">完全免费吗？<span class="ch">+</span></button>
+    <div class="a"><p>完全免费：没有内购、没有广告、没有功能墙，以后也不会有。如果它帮到了你，可以去「赞助」区请作者喝杯可乐。</p></div></div>
+  <div class="qa rv"><button class="q">支持哪些版本和加载器？<span class="ch">+</span></button>
+    <div class="a"><p>正式版、快照、远古版全量支持；下载时的确认页可直接勾选 Forge / NeoForge / Fabric，启动器会自动匹配对应版本并安装。</p></div></div>
+  <div class="qa rv"><button class="q">杀毒软件报毒怎么办？<span class="ch">+</span></button>
+    <div class="a"><p>HIL 是 545KB 的单文件绿色程序，不安装、不写注册表、不联网上传任何数据。部分杀软对单文件程序敏感属于误报，添加信任或白名单即可放心使用。</p></div></div>
+  <div class="qa rv"><button class="q">离线账号能进朋友的局域网世界吗？<span class="ch">+</span></button>
+    <div class="a"><p>可以。HIL 启动的游戏会自动注入破墙补丁，朋友「对局域网开放」的世界对离线玩家直接放行，不弹「无效会话」；再配合联机大厅的房间码，不在同一网络也能进。</p></div></div>
+  <div class="qa rv"><button class="q">最低配置要求？<span class="ch">+</span></button>
+    <div class="a"><p>能跑 Minecraft 就能跑 HIL。整个渲染管线为核显设备专门优化过，界面动画在老爷机上也能全速运行。</p></div></div>
+</section>
+
+<!-- ================= 赞助 ================= -->
+<section id="sponsor">
+  <div class="sec-title rv">赞助</div>
+  <div class="sec-sub rv">HIL 完全免费。如果它帮到了你，请作者喝杯可乐吧！</div>
+  <div class="qr-row rv">
+    <div class="qr qr-live"><img src="sponsor.jpg" alt="微信赞赏码"></div>
+    <div class="qr">更多渠道<br>（即将开放）</div>
+  </div>
+  <p class="fineprint rv">收款码仅此页面有效，如遇其他渠道冒充请勿转账。</p>
+</section>
+
+<!-- ================= 反馈 ================= -->
+<section id="feedback">
+  <div class="sec-title rv">反馈</div>
+  <div class="sec-sub rv">不用注册，写完直接发到作者邮箱</div>
+  <div class="fb-grid">
+    <div class="fb-card rv">
+      <h3>🐛 提交 Bug</h3>
+      <p class="tip">崩溃了请先在启动器里导出错误报告，再把报告内容粘贴到下面。</p>
+      <form class="fb-form" data-subject="HIL Bug 反馈">
+        <input class="hp" type="text" name="botcheck" tabindex="-1" autocomplete="off">
+        <textarea name="message" required placeholder="发生了什么？怎么操作的？（如有崩溃报告请粘贴在这里）"></textarea>
+        <input type="text" name="contact" placeholder="联系方式（选填，方便我找你确认细节）">
+        <button class="btn" type="submit">发送</button>
+      </form>
+    </div>
+    <div class="fb-card rv">
+      <h3>💡 功能建议</h3>
+      <p class="tip">一句话说清楚想要什么，好想法会直接进开发清单。</p>
+      <form class="fb-form" data-subject="HIL 功能建议">
+        <input class="hp" type="text" name="botcheck" tabindex="-1" autocomplete="off">
+        <textarea name="message" required placeholder="我希望 HIL 可以……"></textarea>
+        <input type="text" name="contact" placeholder="联系方式（选填）">
+        <button class="btn" type="submit">发送</button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 收尾 ================= -->
+<section id="final">
+  <h2 class="rv">现在，轮到你了。</h2>
+  <a class="btn rv" href="HugeInsaneLauncher.exe" download="HugeInsaneLauncher-26.8.14-Alpha.exe">⬇ 下载 HIL 26.8.14 Alpha</a>
+  <p class="rv">545KB · Windows · 若浏览器提示「保留此文件」请选择保留</p>
+</section>
+
+<footer>
+  Huge Insane Launcher · 社区驱动的免费启动器 · By MAX<br>
+  与 Mojang / Microsoft 无关，Minecraft 为 Mojang 注册商标 · 本站仅供学习交流<br>
+  © 2026 Huge Insane Launcher
+</footer>
+
+<!-- 液态玻璃位移滤镜：feImage 的位移图由下方 JS 用 canvas 生成后填入 -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="glassRefract" color-interpolation-filters="sRGB">
+    <feImage id="refractMapImg" x="0" y="0" width="100%" height="100%" preserveAspectRatio="none" result="map"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="10" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+</svg>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+  /* ★ 待补充：Web3Forms access key（注册 https://web3forms.com 免费获取，替换后反馈表单即开通） */
+  var ACCESS_KEY = "9f3ece38-0e0a-4b25-a7c8-2dbf8b0a428d";
+
+  var $ = function(s){ return document.querySelector(s); };
+  var $$ = function(s){ return Array.prototype.slice.call(document.querySelectorAll(s)); };
+
+  /* ---------- Toast ---------- */
+  var toastEl = $("#toast"), toastTimer = null;
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toastEl.classList.remove("show"); }, 2600);
+  }
+
+  /* ---------- 导航下划线 + 滚动监听 ---------- */
+  var IDS = ["intro","highlights","features","faq","sponsor","feedback"];
+  var links = $$("#navLinks a"), under = $("#navUnder"), cur = 0;
+  function setActive(i){
+    cur = i;
+    links.forEach(function(a, j){ a.classList.toggle("on", j === i); });
+    var a = links[i];
+    if (a){ under.style.left = a.offsetLeft + "px"; under.style.width = a.offsetWidth + "px"; }
+  }
+  window.addEventListener("resize", function(){ setActive(cur); });
+  var ticking = false;
+  function spy(){
+    ticking = false;
+    var y = window.scrollY + window.innerHeight * 0.35, c = 0;
+    IDS.forEach(function(id, i){
+      var el = document.getElementById(id);
+      if (el && el.offsetTop <= y) c = i;
+    });
+    /* 滚到底强制选中最后一段 */
+    if (window.innerHeight + window.scrollY >= document.body.scrollHeight - 4) c = IDS.length - 1;
+    setActive(c);
+  }
+  window.addEventListener("scroll", function(){
+    if (!ticking){ ticking = true; requestAnimationFrame(spy); }
+  }, {passive:true});
+  spy();
+
+  /* ---------- 滚动提示 ---------- */
+  $("#scrollCue").addEventListener("click", function(){
+    document.getElementById("highlights").scrollIntoView({behavior:"smooth"});
+  });
+
+  /* ---------- 入场动画 ---------- */
+  var io = new IntersectionObserver(function(es){
+    es.forEach(function(e){ if (e.isIntersecting){ e.target.classList.add("in"); io.unobserve(e.target); } });
+  }, {threshold:.12});
+  $$(".rv").forEach(function(el){ io.observe(el); });
+
+  /* ---------- 液态玻璃拖拽 demo（活底折射 + 果冻形变） ---------- */
+  var stage = $("#glassStage"), gp = $("#glassPill"), copy = $("#pillCopy");
+  function syncCopy(){
+    var x = gp.offsetLeft, y = gp.offsetTop;
+    copy.style.left = -x + "px";
+    copy.style.top = -y + "px";
+    /* 放大原点 = 胶囊中心在舞台坐标系中的位置，放大镜效果 */
+    copy.style.transformOrigin = (x + gp.offsetWidth / 2) + "px " + (y + gp.offsetHeight / 2) + "px";
+  }
+  function sizeCopy(){
+    copy.style.width = stage.clientWidth + "px";
+    copy.style.height = stage.clientHeight + "px";
+    syncCopy();
+  }
+  window.addEventListener("resize", sizeCopy);
+
+  var dragging = false, dx = 0, dy = 0, lastX = 0, lastY = 0, lastT = 0;
+  var sx = 1, sy = 1, svx = 0, svy = 0, springTimer = null;
+  function setDeform(){ gp.style.transform = "scale(" + sx.toFixed(4) + "," + sy.toFixed(4) + ")"; }
+  /* 松手后的弹簧回弹：欠阻尼，会轻微过冲再稳住 */
+  function springStep(){
+    svx = (svx + (1 - sx) * 0.14) * 0.72;
+    svy = (svy + (1 - sy) * 0.14) * 0.72;
+    sx += svx; sy += svy;
+    setDeform();
+    if (Math.abs(1 - sx) > 0.001 || Math.abs(1 - sy) > 0.001 || Math.abs(svx) > 0.001 || Math.abs(svy) > 0.001){
+      springTimer = requestAnimationFrame(springStep);
+    } else { sx = sy = 1; svx = svy = 0; setDeform(); springTimer = null; }
+  }
+  gp.addEventListener("pointerdown", function(e){
+    dragging = true;
+    /* 从居中定位转成显式坐标，避免拖动第一帧跳变 */
+    gp.style.left = gp.offsetLeft + "px"; gp.style.top = gp.offsetTop + "px"; gp.style.margin = "0";
+    var r = gp.getBoundingClientRect();
+    dx = e.clientX - r.left; dy = e.clientY - r.top;
+    lastX = e.clientX; lastY = e.clientY; lastT = performance.now();
+    if (springTimer){ cancelAnimationFrame(springTimer); springTimer = null; }
+    gp.setPointerCapture(e.pointerId);
+  });
+  gp.addEventListener("pointermove", function(e){
+    if (!dragging) return;
+    var sr = stage.getBoundingClientRect();
+    var x = e.clientX - sr.left - dx, y = e.clientY - sr.top - dy;
+    x = Math.max(0, Math.min(sr.width  - gp.offsetWidth,  x));
+    y = Math.max(0, Math.min(sr.height - gp.offsetHeight, y));
+    gp.style.left = x + "px"; gp.style.top = y + "px";
+    syncCopy();
+    /* 拖动速度 → 果冻拉伸：横向快就横向拉长、纵向压扁，反之亦然 */
+    var now = performance.now(), dt = Math.max(1, now - lastT);
+    var vx = (e.clientX - lastX) / dt * 16, vy = (e.clientY - lastY) / dt * 16;
+    lastX = e.clientX; lastY = e.clientY; lastT = now;
+    var mx = Math.min(Math.abs(vx) * 0.02, 0.10), my = Math.min(Math.abs(vy) * 0.02, 0.08);
+    sx = 1 + mx - my * 0.5; sy = 1 + my - mx * 0.5;
+    setDeform();
+  });
+  gp.addEventListener("pointerup", function(){
+    dragging = false;
+    if (!springTimer) springTimer = requestAnimationFrame(springStep);
+  });
+  sizeCopy();
+
+  /* 生成胶囊形位移图：中心不动，越靠近边缘像素被往外拽得越多 → 边缘扭曲环 */
+  (function buildRefractMap(){
+    try{
+      var W = 380, H = 116, cv = document.createElement("canvas");
+      cv.width = W; cv.height = H;
+      var ctx = cv.getContext("2d"), img = ctx.createImageData(W, H), d = img.data;
+      var cx0 = H / 2, cx1 = W - H / 2, cy = H / 2, R = H / 2;
+      for (var y = 0; y < H; y++){
+        for (var x = 0; x < W; x++){
+          var sxq = Math.max(cx0, Math.min(cx1, x));
+          var dxp = x - sxq, dyp = y - cy;
+          var dist = Math.sqrt(dxp * dxp + dyp * dyp), dn = dist / R;
+          var nx = dist > 0 ? dxp / dist : 0, ny = dist > 0 ? dyp / dist : 0;
+          var t = Math.max(0, Math.min(1, (dn - 0.70) / 0.30));
+          var k = t * t * (3 - 2 * t) * 0.45;   /* smoothstep：位移收窄到贴边细环，与放大边距衔接不重叠 */
+          var i = (y * W + x) * 4;
+          d[i]     = Math.round((0.5 + nx * k) * 255);
+          d[i + 1] = Math.round((0.5 + ny * k) * 255);
+          d[i + 2] = 128; d[i + 3] = 255;
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+      var fe = document.getElementById("refractMapImg");
+      if (fe) fe.setAttribute("href", cv.toDataURL("image/png"));
+    }catch(e){}
+  })();
+
+  /* ---------- 服务器地址复制 ---------- */
+  $("#srvCopy").addEventListener("click", function(){
+    var t = "mczero.top";
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(t).then(function(){ toast("地址已复制：" + t); });
+    } else {
+      var ta = document.createElement("textarea");
+      ta.value = t; document.body.appendChild(ta); ta.select();
+      try{ document.execCommand("copy"); toast("地址已复制：" + t); }catch(e){ toast("复制失败，请手动输入：" + t); }
+      document.body.removeChild(ta);
+    }
+  });
+
+  /* ---------- 答疑手风琴 ---------- */
+  $$(".qa").forEach(function(qa){
+    var q = qa.querySelector(".q"), a = qa.querySelector(".a");
+    q.addEventListener("click", function(){
+      var open = qa.classList.toggle("open");
+      a.style.maxHeight = open ? a.scrollHeight + "px" : "0";
+    });
+  });
+
+  /* ---------- 反馈表单（Web3Forms） ---------- */
+  $$(".fb-form").forEach(function(f){
+    f.addEventListener("submit", function(e){
+      e.preventDefault();
+      if (f.botcheck.value) return;   // 蜜罐：机器人填了就静默丢弃
+      if (!f.message.value.trim()){ toast("先写点内容再发送吧"); return; }
+      if (ACCESS_KEY === "YOUR_WEB3FORMS_KEY"){ toast("反馈通道即将开放，敬请期待"); return; }
+      var btn = f.querySelector("button[type=submit]");
+      btn.disabled = true; btn.textContent = "发送中…";
+      fetch("https://api.web3forms.com/submit", {
+        method:"POST",
+        headers:{"Content-Type":"application/json", "Accept":"application/json"},
+        body:JSON.stringify({
+          access_key:ACCESS_KEY,
+          subject:f.dataset.subject,
+          from_name:"HIL 官网",
+          message:f.message.value,
+          contact:f.contact.value || "（未留）"
+        })
+      }).then(function(r){ return r.json(); }).then(function(d){
+        if (d.success){ toast("已送达，感谢反馈！"); f.reset(); }
+        else { toast("发送失败，请稍后再试"); }
+      }).catch(function(){ toast("网络异常，请稍后再试"); })
+      .then(function(){ btn.disabled = false; btn.textContent = "发送"; });
+    });
+  });
+})();
+</script>
+
+<script>
+// 明暗双色 demo：每 3s 自动换肤；用户亲手点过一次就停自动，交还控制权
+(function(){
+  var st = document.getElementById('themeStage');
+  if (!st) return;
+  function flip(){ st.classList.toggle('light'); }
+  var auto = setInterval(flip, 3000);
+  st.addEventListener('click', function(){ clearInterval(auto); flip(); });
+})();
+</script>
+
+</body>
+</html>

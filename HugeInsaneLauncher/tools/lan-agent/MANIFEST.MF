@@ -1,0 +1,5 @@
+Manifest-Version: 1.0
+Premain-Class: hil.lan.LanAgent
+Agent-Class: hil.lan.LanAgent
+Can-Redefine-Classes: true
+Can-Retransform-Classes: true

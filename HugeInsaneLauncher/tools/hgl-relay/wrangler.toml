@@ -1,0 +1,10 @@
+name = "hgl-relay"
+main = "worker.js"
+compatibility_date = "2025-08-01"
+
+[durable_objects]
+bindings = [{ name = "RELAY_ROOM", class_name = "RelayRoom" }]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RelayRoom"]

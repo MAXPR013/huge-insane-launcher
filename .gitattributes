@@ -1,0 +1,7 @@
+# 仓库内统一用 LF 存储与检出，保持与原始源码一致的字节
+* text=auto eol=lf
+
+*.png   binary
+*.jpg   binary
+*.ico   binary
+*.jar   binary
