@@ -98,6 +98,13 @@
   .btn:hover{background:var(--accent2);transform:translateY(-2px);box-shadow:0 8px 26px rgba(79,143,223,.5)}
   .btn:active{transform:translateY(0)}
   .btn.nav-dl{padding:6px 16px;font-size:12.5px;margin-left:26px}
+  /* GitHub 仓库入口：幽灵按钮，跟主题色下载按钮区分开 */
+  .btn.nav-gh{
+    background:transparent;color:var(--nav-link);border:1px solid var(--line);
+    box-shadow:none;padding:6px 14px;font-size:12.5px;margin-left:14px;gap:7px;
+  }
+  .btn.nav-gh:hover{background:var(--panel);color:var(--text);border-color:var(--accent);box-shadow:0 6px 18px rgba(0,0,0,.18)}
+  .btn.nav-gh svg{width:15px;height:15px;fill:currentColor;flex:none}
 
   /* ========== 首屏 · 简介 ========== */
   #intro{
@@ -400,7 +407,9 @@
   /* ========== 移动端 ========== */
   @media (max-width:760px){
     .nav .links{display:none}
-    .btn.nav-dl{margin-left:auto}
+    .btn.nav-gh{margin-left:auto;padding:6px 10px}
+    .btn.nav-gh span{display:none}
+    .btn.nav-dl{margin-left:10px}
     #intro h1{font-size:40px}
     #intro .sub{font-size:18px}
     .hero-shot{width:94vw}
@@ -423,6 +432,10 @@
       <a href="#faq">答疑</a><a href="#sponsor">赞助</a><a href="#feedback">反馈</a>
       <i class="under" id="navUnder"></i>
     </div>
+    <a class="btn nav-gh" href="https://github.com/MAXPR013/huge-insane-launcher" target="_blank" rel="noopener" aria-label="GitHub 开源仓库">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+      <span>GitHub</span>
+    </a>
     <a class="btn nav-dl" href="HugeInsaneLauncher.exe" download="HugeInsaneLauncher-26.8.14-Alpha.exe">⬇ 下载</a>
   </div>
 </header>
