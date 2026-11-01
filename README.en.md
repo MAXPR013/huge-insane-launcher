@@ -12,7 +12,7 @@
 
 ---
 
-![Light](website/screenshot-light.png)
+![Light](https://hugeinsane.pages.dev/screenshot-light.png)
 
 ## Features
 

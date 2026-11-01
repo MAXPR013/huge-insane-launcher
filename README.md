@@ -16,7 +16,7 @@
 
 | 浅色模式 | 深色模式 |
 |---|---|
-| ![浅色](website/screenshot-light.png) | ![深色](website/screenshot-dark.png) |
+| ![浅色](https://hugeinsane.pages.dev/screenshot-light.png) | ![深色](https://hugeinsane.pages.dev/screenshot-dark.png) |
 
 ---
 
