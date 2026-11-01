@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -38,6 +39,42 @@ namespace HugeLauncher
             }
             Directory.CreateDirectory(McDir);
             Directory.CreateDirectory(LauncherDir);
+            EnsureImages();
+        }
+
+        // 内嵌界面贴图：单文件 exe 分发时（旁边没有 Images/），启动时从 exe 资源释放到配置目录。
+        // 资源名规则见 build.bat：img.<相对路径的点号形式>，例如 img.Blocks.Grass.png
+        // 已存在的文件一律跳过：老用户目录里的图不会被覆盖，删掉某张也会自动补回。
+        static readonly string[] ImageFiles = new string[]
+        {
+            "Blocks/Anvil.png", "Blocks/CobbleStone.png", "Blocks/CommandBlock.png",
+            "Blocks/CraftingTable.png", "Blocks/Egg.png", "Blocks/Furnace.png",
+            "Blocks/GoldBlock.png", "Blocks/Grass.png", "Blocks/GrassPath.png",
+            "Blocks/RedstoneBlock.png", "Loaders/Fabric.png", "Loaders/NeoForge.png"
+        };
+
+        public static void EnsureImages()
+        {
+            try
+            {
+                string imgRoot = Path.Combine(LauncherDir, "Images");
+                Assembly asm = Assembly.GetExecutingAssembly();
+                for (int i = 0; i < ImageFiles.Length; i++)
+                {
+                    string rel = ImageFiles[i];
+                    string dst = Path.Combine(imgRoot, rel.Replace('/', '\\'));
+                    if (File.Exists(dst)) continue;
+                    string res = "img." + rel.Replace('/', '.');
+                    using (Stream s = asm.GetManifestResourceStream(res))
+                    {
+                        if (s == null) continue;
+                        Directory.CreateDirectory(Path.GetDirectoryName(dst));
+                        using (FileStream fs = new FileStream(dst, FileMode.Create, FileAccess.Write))
+                            s.CopyTo(fs);
+                    }
+                }
+            }
+            catch { }   // 只读目录等异常不影响启动
         }
 
         public static string Fwd(string p) { return p.Replace('\\', '/'); }
