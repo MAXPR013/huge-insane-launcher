@@ -19,6 +19,54 @@ namespace HugeLauncher.Ui
         public static Action<bool> LightModeSwitch;
         public static Action EvalAuto;
 
+        // 主题：liquid=流光 / frost=霜面 / solid=素底
+        public static string Skin = "liquid";
+        public static bool IsLiquid { get { return Skin == "liquid"; } }
+        public static bool IsFrost { get { return Skin == "frost"; } }
+        public static bool IsSolid { get { return Skin == "solid"; } }
+        public static event EventHandler SkinChanged;
+
+        // 布局：classic=经典横排 / vertical=纵向舞台
+        public static string Layout = "classic";
+        public static bool IsVertical { get { return Layout == "vertical"; } }
+        public static event EventHandler LayoutChanged;
+
+        public static void ApplyLayout(string l)
+        {
+            if (l != "classic" && l != "vertical") l = "classic";
+            if (Layout == l) return;
+            Layout = l;
+            var h = LayoutChanged;
+            if (h != null) h(null, EventArgs.Empty);
+        }
+
+        public static void ApplySkin(string s)
+        {
+            if (s != "liquid" && s != "frost" && s != "solid") s = "liquid";
+            if (Skin == s)
+            {
+                bool sameOn = (s == "liquid");
+                if (Glass.On != sameOn)
+                {
+                    Glass.On = sameOn;
+                    var g0 = GlassChanged;
+                    if (g0 != null) g0(null, EventArgs.Empty);
+                }
+                return;
+            }
+            Skin = s;
+            Palette.Apply(Palette.Light);
+            bool on = (s == "liquid");
+            if (Glass.On != on)
+            {
+                Glass.On = on;
+                var gh = GlassChanged;
+                if (gh != null) gh(null, EventArgs.Empty);
+            }
+            var h = SkinChanged;
+            if (h != null) h(null, EventArgs.Empty);
+        }
+
         // 液态玻璃总开关（Glass.On 的唯一事实源；切换触发 GlassChanged，控件各自重建玻璃脸）
         public static bool LiquidGlass
         {
@@ -29,10 +77,7 @@ namespace HugeLauncher.Ui
 
         public static void ApplyGlass(bool on)
         {
-            if (Glass.On == on) return;
-            Glass.On = on;
-            var h = GlassChanged;
-            if (h != null) h(null, EventArgs.Empty);   // 活底即时可用：控件在各自 GlassChanged 里重建脸即可
+            ApplySkin(on ? "liquid" : "solid");
         }
 
         // 需要换色回调的元素（如光晕颜色）注册此事件

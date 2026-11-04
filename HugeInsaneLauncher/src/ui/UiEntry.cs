@@ -16,7 +16,8 @@ namespace HugeLauncher.Ui
                 e.Handled = true;
                 try { new CrashDialog(detail, CrashReport.EnvironmentInfo()).ShowDialog(); } catch { }
             };
-            DarkScrollBar.Register(app, Config.Load().LiquidGlass);   // 滚动条样式启动时按玻璃开关选定
+            Config cfg0 = Config.Load();
+            DarkScrollBar.Register(app, cfg0.Skin != "solid");   // 流光/霜面用细滚动条，素底用经典滚动条
             app.Run(new MainWindow());
         }
     }

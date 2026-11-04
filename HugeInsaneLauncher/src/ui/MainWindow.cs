@@ -19,7 +19,7 @@ namespace HugeLauncher.Ui
     {
         const string BrandName = "Huge Insane Launcher";
         // 版本号规则：年份.月份.该月第几个版本（当月首个省略末项，第二个为 1）
-        public const string Version = "26.8.14";
+        public const string Version = "26.11.1";
         public const string Channel = "Alpha";   // 渠道徽章：Alpha/Beta/Release
 
         Config cfg;
@@ -57,6 +57,21 @@ namespace HugeLauncher.Ui
         StackPanel sideList;
         Grid sideWrapPanel;          // 二级边栏整列外壳（实例管理/详情等游离页时隐藏）
         ColumnDefinition sideCol;    // 二级边栏列宽（游离页时归零，不留空带）
+        bool pendingSideVisible;     // 下一次换页 swap 时才生效的侧栏状态
+        int pendingSideWidth = 118;
+        StackPanel verticalSecondary;          // 纵向布局：二级横条
+        Border verticalSecondaryBar;           // 二级横条外壳（无二级项时收起）
+        Border verticalPill;                   // 二级选中指示框（主题化，滑动）
+        TranslateTransform verticalPillTransform;
+        bool verticalPillInit;
+        readonly List<FlatButton> verticalButtons = new List<FlatButton>();
+        Border railPill;
+        TranslateTransform railPillTransform;
+        bool railPillInit;
+        Spring railPillSpring = new Spring(0) { Stiffness = 200, Damping = 16 };
+        Spring verticalPillSpring = new Spring(0) { Stiffness = 200, Damping = 16 };
+        TextBlock[] railLabels;
+        Path[] railIcons;
         Grid floatBall;              // 下载管理悬浮球：有任务时出现在侧栏右下角，单击进下载管理
         TextBlock floatText;         // 球心白字百分比
         bool ballVisible, ballUpdatePending;
@@ -117,6 +132,7 @@ namespace HugeLauncher.Ui
             ThemeManager.ApplyTheme(cfg.Theme);
             ThemeManager.LightModeSwitch = SwitchSkin;    // 设置页只调钩子，不碰窗口
             ThemeManager.EvalAuto = EvalAutoDayNight;
+            // SkinChanged 在 BuildUi 之后再接：ApplySkin 在构造期会触发事件，早接会建两次树
             // 流动史莱姆：色板半透明化在 Palette.Apply 里吃 Slime.On，必须先落位再建 UI
             Slime.On = cfg.SlimeOn;
             Slime.BlurBg = cfg.SlimeBlurBg;
@@ -127,7 +143,8 @@ namespace HugeLauncher.Ui
             Slime.RefreshColorsAsync();   // 后台取壁纸色，回来后只给画布换色（Recolor），不重建 UI
             Palette.Apply(cfg.LightMode);   // 亮/暗色板在建 UI 前定位，控件首张脸就是对的
             Updater.NewVersionHandler = OnUpdateFound;
-            Glass.On = cfg.LiquidGlass;   // 建 UI 前置位，各控件首张脸就按模式建
+            ThemeManager.ApplySkin(cfg.Skin);   // 建 UI 前置位：流光/霜面/素底
+            ThemeManager.ApplyLayout(cfg.Layout);
 
             // 页面契约接线
             Navigator.Handler = Navigate;
@@ -176,6 +193,8 @@ namespace HugeLauncher.Ui
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
             BuildUi();
+            ThemeManager.SkinChanged += delegate { Frost.Refresh(); RebuildUi(); };
+            ThemeManager.LayoutChanged += delegate { RebuildUi(); };
             WireAiSteve();
             Loaded += OnLoaded;
             // [临时探针] --bubble-demo：启动后弹一条固定气泡，供截图排查玻璃折射错位
@@ -378,13 +397,12 @@ namespace HugeLauncher.Ui
 
         void BuildUi()
         {
-            // 根容器：圆角深色渐变 + 主题色细边（投影已撤：核显上 DropShadowEffect 是帧率杀手）
-            // 史莱姆开启：rootBorder 不刷底色，底层让给 SlimeView（色块）+ 压色罩
+            // 两卡分缝：整窗透明，背景层只画在两张卡的圆角矩形里，缝里直接透桌面
             rootBorder = new Border();
             rootBorder.CornerRadius = new CornerRadius(12);
-            rootBorder.Background = Slime.On ? null : Palette.WindowBg();
+            rootBorder.Background = null;
             rootBorder.BorderBrush = ThemeManager.Accent;
-            rootBorder.BorderThickness = new Thickness(1);
+            rootBorder.BorderThickness = new Thickness(0);
             rootBorder.Margin = new Thickness(10);
             enterTransform = new TranslateTransform(0, 14);
             rootBorder.RenderTransform = enterTransform;
@@ -392,31 +410,45 @@ namespace HugeLauncher.Ui
             var root = new Grid();
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(36) });
             root.RowDefinitions.Add(UiHelpers.StarRow());
+
+            var bgLayer = new Grid();
+            bgLayer.IsHitTestVisible = false;
+            Grid.SetRowSpan(bgLayer, 2);
             if (Slime.On)
             {
-                // 背景层打包成独立容器：pill 类玻璃的透镜源（史莱姆+压色罩合成层）——
-                // 色调和周围窗口一致（中性磨砂），扭曲感交给折射环+中心放大表达，不靠浓艳底色
-                // （曾直取史莱姆本体：色块太艳，pill 红得像改了配色，被用户打回）
-                var bgLayer = new Grid();
-                bgLayer.IsHitTestVisible = false;
-                Grid.SetRowSpan(bgLayer, 2);
-                var slime = new SlimeView();
-                bgLayer.Children.Add(slime);
+                bgLayer.Children.Add(new SlimeView());
                 var veil = new Border();
                 veil.Background = Palette.WindowBgVeil();
                 veil.IsHitTestVisible = false;
-                veil.SizeChanged += delegate
-                {
-                    veil.Clip = new RectangleGeometry(new Rect(0, 0, veil.ActualWidth, veil.ActualHeight), 12, 12);
-                };
                 bgLayer.Children.Add(veil);
-                root.Children.Add(bgLayer);
-                Glass.BgLensSource = bgLayer;   // 透镜源 = 史莱姆+压色罩合成层（中性磨砂，与窗口同调）
             }
-            else Glass.BgLensSource = null;
-            root.Children.Add(BuildTitleBar());
+            else if (Frost.On)
+            {
+                bgLayer.Background = Frost.Backdrop;
+            }
+            else
+            {
+                bgLayer.Background = Palette.Light
+                    ? new SolidColorBrush(Color.FromArgb(122, 255, 255, 255))
+                    : new SolidColorBrush(Color.FromArgb(122, 0, 0, 0));
+            }
+            Action clipCards = delegate
+            {
+                double w = root.ActualWidth, h = root.ActualHeight;
+                if (w < 32 || h < 32) return;
+                var geo = new GeometryGroup();
+                geo.Children.Add(new RectangleGeometry(new Rect(0, 6, 280, Math.Max(0, h - 16)), 12, 12));
+                geo.Children.Add(new RectangleGeometry(new Rect(290, 6, Math.Max(0, w - 300), Math.Max(0, h - 16)), 12, 12));
+                bgLayer.Clip = geo;
+            };
+            root.SizeChanged += delegate { clipCards(); };
+            root.Children.Add(bgLayer);
+            Glass.BgLensSource = bgLayer;
+            Dispatcher.BeginInvoke(clipCards, DispatcherPriority.Loaded);
+
             var content = BuildContent();
-            Grid.SetRow(content, 1);
+            Grid.SetRow(content, 0);
+            Grid.SetRowSpan(content, 2);
             root.Children.Add(content);
 
             // Toast 浮层（覆盖全窗，顶部居中，不挡鼠标）
@@ -485,6 +517,7 @@ namespace HugeLauncher.Ui
             if (!ThemeManager.AnimOn)
             {
                 Palette.Apply(light);
+                Frost.Refresh();   // 霜面底图烘死了亮/暗纱，必须随色板重烘
                 RebuildUi();
                 return;
             }
@@ -495,6 +528,7 @@ namespace HugeLauncher.Ui
                 Ani.AaCode(delegate
                 {
                     Palette.Apply(light);
+                    Frost.Refresh();   // 重烘霜面底图，否则亮色模式仍显示暗纱
                     skinOverlay.Background = Palette.WindowBg();   // 揭开时已是新肤色
                     RebuildUi();
                     Ani.Start("skinReveal",
@@ -648,21 +682,429 @@ namespace HugeLauncher.Ui
 
         UIElement BuildContent()
         {
-            var g = new Grid();
-            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(280) });
-            g.ColumnDefinitions.Add(UiHelpers.StarCol());
-            g.Children.Add(BuildSidebar());
+            if (ThemeManager.IsVertical) InitNavGroups();
+            return BuildTwoCardShell(ThemeManager.IsVertical ? BuildVerticalRightBody() : BuildClassicRightBody());
+        }
+
+        UIElement BuildClassicRightBody()
+        {
+            var rb = new Grid();
             var right = BuildRightSide();
-            // 流动史莱姆·前景柔化：只糊右侧页面文字区，史蒂夫/侧栏不参与
             if (Slime.On && Slime.BlurFore > 0.01)
                 right.Effect = new BlurEffect { Radius = Slime.BlurFore };
+            rb.Children.Add(right);
+            rb.Children.Add(BuildFloatBall());
+            return rb;
+        }
+
+        UIElement BuildVerticalRightBody()
+        {
+            var railHost = new Grid();
+            railHost.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(72) });
+            railHost.ColumnDefinitions.Add(UiHelpers.StarCol());
+            railHost.Children.Add(BuildRail());
+            var right = BuildVerticalRight();
             Grid.SetColumn(right, 1);
-            g.Children.Add(right);
-            // 下载管理悬浮球：最后添加，盖在整个内容区最上层右下角（切页不消失）
+            railHost.Children.Add(right);
+            return railHost;
+        }
+
+        // ===== 纵向舞台：280 史蒂夫 + 72 竖轨 + 右上二级 + 页面 =====
+        void InitNavGroups()
+        {
+            navGroups = new[]
+            {
+                new NavGroup { Name = "下载", Labels = new[] { "原版游戏", "模组", "数据包", "资源包", "光影包", "整合包" },
+                    Keys = new[] { "download:install", "download:mod", "download:datapack", "download:resourcepack", "download:shader", "download:pack" } },
+                new NavGroup { Name = "设置", Labels = new[] { "游戏设置", "启动器设置" },
+                    Keys = new[] { "settings:game", "settings:launcher" } },
+                new NavGroup { Name = "联机", Labels = new[] { "一键开服", "联机大厅", "服务器列表" },
+                    Keys = new[] { "server:oneclick", "server:hall", "server:list" } },
+                new NavGroup { Name = "账号", Labels = new string[0], Keys = new[] { "account:home" } },
+            };
+        }
+
+        UIElement BuildBrandHeader()
+        {
+            var bar = new Grid();
+            bar.Height = 40;
+            bar.MouseLeftButtonDown += delegate { try { DragMove(); } catch { } };
+            var left = new StackPanel();
+            left.Orientation = Orientation.Horizontal;
+            left.Margin = new Thickness(16, 0, 0, 0);
+            left.VerticalAlignment = VerticalAlignment.Center;
+            var appName = new TextBlock();
+            appName.Text = BrandName;
+            appName.Foreground = Palette.B(Palette.Text);
+            appName.FontSize = 13;
+            appName.FontWeight = FontWeights.SemiBold;
+            var hil = new TextBlock();
+            hil.Text = "HIL";
+            hil.Foreground = Palette.B(Palette.Dim);
+            hil.FontSize = 9;
+            hil.Margin = new Thickness(6, 0, 0, 0);
+            hil.VerticalAlignment = VerticalAlignment.Bottom;
+            var ver = new TextBlock();
+            ver.Text = Version;
+            ver.Foreground = Palette.B(Palette.Dim);
+            ver.FontSize = 9;
+            ver.Margin = new Thickness(6, 0, 0, 0);
+            ver.VerticalAlignment = VerticalAlignment.Bottom;
+            var betaBrush = new SolidColorBrush(ThemeManager.CurrentColor);
+            ThemeManager.ColorChanged += delegate { betaBrush.Color = ThemeManager.CurrentColor; };
+            var beta = new Border();
+            beta.Background = betaBrush;
+            beta.CornerRadius = new CornerRadius(4);
+            beta.Padding = new Thickness(5, 1, 5, 2);
+            beta.Margin = new Thickness(6, 0, 0, 0);
+            beta.VerticalAlignment = VerticalAlignment.Bottom;
+            var betaText = new TextBlock();
+            betaText.Text = Channel;
+            betaText.Foreground = Palette.B(Colors.White);
+            betaText.FontSize = 8;
+            betaText.FontWeight = FontWeights.Bold;
+            beta.Child = betaText;
+            left.Children.Add(appName);
+            left.Children.Add(hil);
+            left.Children.Add(ver);
+            left.Children.Add(beta);
+            bar.Children.Add(left);
+            return bar;
+        }
+
+        UIElement BuildWindowControls()
+        {
+            var bar = new Grid();
+            bar.Height = 40;
+            bar.MouseLeftButtonDown += delegate { try { DragMove(); } catch { } };
+            var titleBg = new Grid();
+            bar.Children.Add(titleBg);
+            var right = new StackPanel();
+            right.Orientation = Orientation.Horizontal;
+            right.HorizontalAlignment = HorizontalAlignment.Right;
+            right.VerticalAlignment = VerticalAlignment.Top;
+            var btnMin = MakeTitleButton("—", Palette.BtnHover, new CornerRadius(0));
+            btnMin.Click += delegate { WindowState = WindowState.Minimized; };
+            btnMin.Margin = new Thickness(0, 0, 10, 0);
+            btnMin.GlassSource = titleBg;
+            var btnClose = MakeTitleButton("✕", Palette.Red, new CornerRadius(0, 12, 0, 0));
+            btnClose.Click += delegate { Close(); };
+            btnClose.GlassSource = titleBg;
+            right.Children.Add(btnMin);
+            right.Children.Add(btnClose);
+            bar.Children.Add(right);
+            return bar;
+        }
+
+        UIElement BuildTwoCardShell(UIElement rightBody)
+        {
+            var g = new Grid();
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(280) });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(10) });
+            g.ColumnDefinitions.Add(UiHelpers.StarCol());
+
+            var sidebar = (Grid)BuildSidebar();
+
+            var leftStack = new Grid();
+            leftStack.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            leftStack.RowDefinitions.Add(UiHelpers.StarRow());
+            leftStack.Children.Add(BuildBrandHeader());
+            Grid.SetRow(sidebar, 1);
+            leftStack.Children.Add(sidebar);
+
+            var leftPanel = FrameVerticalPanel(leftStack);
+            leftPanel.Margin = new Thickness(0, 6, 0, 10);
+            g.Children.Add(leftPanel);
+
+            var rightStack = new Grid();
+            rightStack.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            rightStack.RowDefinitions.Add(UiHelpers.StarRow());
+            rightStack.Children.Add(BuildWindowControls());
+            Grid.SetRow(rightBody, 1);
+            rightStack.Children.Add(rightBody);
+
+            var rightPanel = FrameVerticalPanel(rightStack);
+            rightPanel.Margin = new Thickness(0, 6, 10, 10);
+            Grid.SetColumn(rightPanel, 2);
+            g.Children.Add(rightPanel);
+            return g;
+        }
+
+        Border FrameVerticalPanel(UIElement child)
+        {
+            var b = new Border();
+            b.CornerRadius = new CornerRadius(12);
+            b.BorderBrush = ThemeManager.Accent;
+            b.BorderThickness = new Thickness(1);
+            b.Background = null;   // 背景由 bgLayer 的圆角裁切提供，卡本身只留边框
+            b.Child = child;
+            b.SizeChanged += delegate
+            {
+                b.Clip = new RectangleGeometry(new Rect(0, 0, b.ActualWidth, b.ActualHeight), 12, 12);
+            };
+            return b;
+        }
+
+        UIElement BuildRail()
+        {
+            var host = new Grid();
+            host.Margin = new Thickness(0, 6, 0, 10);
+            var stack = new StackPanel();
+            stack.VerticalAlignment = VerticalAlignment.Top;
+            stack.Margin = new Thickness(0, 6, 0, 0);
+            string[] icons = new string[]
+            {
+                "M12 3 L12 15 M7 10 L12 15 L17 10 M4 20 L20 20",
+                "M12 2 L14.5 4 L17.5 3.5 L18.5 6.5 L21.5 7.5 L21 10.5 L22 12 L21 13.5 L21.5 16.5 L18.5 17.5 L17.5 20.5 L14.5 20 L12 22 L9.5 20 L6.5 20.5 L5.5 17.5 L2.5 16.5 L3 13.5 L2 12 L3 10.5 L2.5 7.5 L5.5 6.5 L6.5 3.5 L9.5 4 Z M12 8 A4 4 0 1 0 12 16 A4 4 0 1 0 12 8",
+                "M8 11 A4 4 0 1 0 8 3 A4 4 0 1 0 8 11 M2 21 L2 19 A6 6 0 0 1 14 19 L14 21 M16 4 A4 4 0 0 1 16 12 M22 21 L22 19 A6 6 0 0 0 18 13",
+                "M12 12 A4 4 0 1 0 12 4 A4 4 0 1 0 12 12 M4 21 L4 19 A4 4 0 0 1 8 15 L16 15 A4 4 0 0 1 20 19 L20 21"
+            };
+            railLabels = new TextBlock[navGroups.Length];
+            railIcons = new Path[navGroups.Length];
+            railPill = new Border();
+            railPill.Width = 58;
+            railPill.Height = 48;
+            railPill.CornerRadius = new CornerRadius(12);
+            railPill.HorizontalAlignment = HorizontalAlignment.Center;
+            railPill.VerticalAlignment = VerticalAlignment.Top;
+            railPill.Margin = new Thickness(0, 10, 0, 0);
+            railPill.IsHitTestVisible = false;
+            railPillTransform = new TranslateTransform(0, 0);
+            railPill.RenderTransform = railPillTransform;
+            host.Children.Add(railPill);
+            for (int i = 0; i < navGroups.Length; i++)
+            {
+                int gi = i;
+                var item = new Grid();
+                item.Height = 56;
+                item.Cursor = Cursors.Hand;
+                item.Background = Brushes.Transparent;   // 整块 72×56 可点，不再只有文字和描边
+                var box = new StackPanel();
+                box.HorizontalAlignment = HorizontalAlignment.Center;
+                box.VerticalAlignment = VerticalAlignment.Center;
+                box.IsHitTestVisible = false;           // 点击统一交给 item
+                var p = new Path();
+                p.Data = Geometry.Parse(icons[i]);
+                p.Stroke = Palette.B(Palette.Dim);
+                p.StrokeThickness = 1.6;
+                p.StrokeStartLineCap = PenLineCap.Round;
+                p.StrokeEndLineCap = PenLineCap.Round;
+                p.Width = 20; p.Height = 20;
+                p.Stretch = Stretch.Uniform;
+                p.HorizontalAlignment = HorizontalAlignment.Center;
+                railIcons[i] = p;
+                box.Children.Add(p);
+                var lb = new TextBlock();
+                lb.Text = navGroups[i].Name;
+                lb.FontSize = 11;
+                lb.Foreground = Palette.B(Palette.Dim);
+                lb.HorizontalAlignment = HorizontalAlignment.Center;
+                lb.Margin = new Thickness(0, 3, 0, 0);
+                railLabels[i] = lb;
+                box.Children.Add(lb);
+                item.Children.Add(box);
+                item.MouseLeftButtonUp += delegate
+                {
+                    SelectGroupVertical(gi, 0);
+                    Navigate(navGroups[gi].Keys[0]);
+                };
+                UiMap.Register("tab:" + navGroups[i].Name, delegate { return item; });
+                stack.Children.Add(item);
+            }
+            host.Children.Add(stack);
+            return host;
+        }
+
+        UIElement BuildVerticalRight()
+        {
+            var g = new Grid();
+            g.Margin = new Thickness(0, 6, 14, 10);
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(UiHelpers.StarRow());
+            verticalSecondaryBar = new Border();
+            verticalSecondaryBar.Height = 40;
+            verticalSecondaryBar.CornerRadius = new CornerRadius(8);
+            verticalSecondaryBar.Visibility = Visibility.Collapsed;
+            verticalSecondary = new StackPanel();
+            verticalSecondary.Orientation = Orientation.Horizontal;
+            verticalSecondary.VerticalAlignment = VerticalAlignment.Center;
+            verticalSecondary.Margin = new Thickness(4, 0, 4, 0);
+            verticalPill = new Border();
+            verticalPill.Height = 30;
+            verticalPill.CornerRadius = new CornerRadius(7);
+            verticalPill.HorizontalAlignment = HorizontalAlignment.Left;
+            verticalPill.VerticalAlignment = VerticalAlignment.Center;
+            verticalPill.Visibility = Visibility.Collapsed;
+            verticalPill.IsHitTestVisible = false;
+            verticalPillTransform = new TranslateTransform(0, 0);
+            verticalPill.RenderTransform = verticalPillTransform;
+            var barGrid = new Grid();
+            barGrid.Children.Add(verticalPill);
+            barGrid.Children.Add(verticalSecondary);
+            Panel.SetZIndex(verticalSecondary, 1);
+            verticalSecondaryBar.Child = barGrid;
+            g.Children.Add(verticalSecondaryBar);
+            contentHost = new Grid();
+            Grid.SetRow(contentHost, 1);
+            g.Children.Add(contentHost);
+            // 下载管理悬浮球照旧盖在内容右下角
             var ball = BuildFloatBall();
-            Grid.SetColumnSpan(ball, 2);
+            Grid.SetRowSpan(ball, 2);
             g.Children.Add(ball);
             return g;
+        }
+
+        void SelectGroupVertical(int idx, int subIdx)
+        {
+            activeGroup = idx;
+            if (railLabels != null)
+            {
+                for (int i = 0; i < railLabels.Length; i++)
+                {
+                    bool on = i == idx;
+                    railLabels[i].Foreground = Palette.B(on ? Palette.Text : Palette.Dim);
+                    railLabels[i].FontWeight = on ? FontWeights.SemiBold : FontWeights.Normal;
+                    railIcons[i].Stroke = Palette.B(on ? ThemeManager.CurrentColor : Palette.Dim);
+                }
+            }
+            StyleRailPill();
+            MoveRailPill(idx);
+            verticalButtons.Clear();
+            verticalSecondary.Children.Clear();
+            var labels = idx >= 0 ? navGroups[idx].Labels : new string[0];
+            var keys = idx >= 0 ? navGroups[idx].Keys : new string[0];
+            verticalSecondaryBar.Visibility = labels.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            for (int k = 0; k < labels.Length; k++)
+            {
+                int ki = k;
+                var b = new FlatButton(labels[k]);
+                b.TabInGlass = true;
+                b.SetFontSize(13);
+                b.SetPadding(new Thickness(12, 6, 12, 6));
+                b.SetCornerRadius(new CornerRadius(6));
+                b.SetColors(Color.FromArgb(0, 0, 0, 0), Color.FromArgb(0, 0, 0, 0),
+                    k == subIdx ? Palette.Text : Palette.Dim, Palette.Text);
+                b.Click += delegate { Navigate(keys[ki]); };
+                verticalButtons.Add(b);
+                verticalSecondary.Children.Add(b);
+                string subKey = keys[k];
+                string subLabel = labels[k];
+                UiMap.Register("sub:" + subLabel, delegate { return b; });
+            }
+            StyleVerticalPill();
+            int first = labels.Length == 0 ? -1 : Math.Max(0, Math.Min(subIdx, labels.Length - 1));
+            Dispatcher.BeginInvoke(new Action(delegate { MoveVerticalPill(first, true); }), DispatcherPriority.Loaded);
+        }
+
+        void StyleRailPill()
+        {
+            if (railPill == null) return;
+            if (Frost.On)
+            {
+                railPill.Background = Frost.TileStrong;
+                railPill.BorderBrush = Frost.Edge;
+                railPill.BorderThickness = new Thickness(1);
+            }
+            else if (Glass.On)
+            {
+                railPill.Background = Glass.SimulatedFace(0.10);
+                railPill.BorderBrush = Glass.Edge();
+                railPill.BorderThickness = new Thickness(1);
+            }
+            else
+            {
+                Color c = ThemeManager.CurrentColor;
+                railPill.Background = new SolidColorBrush(Color.FromArgb(30, c.R, c.G, c.B));
+                railPill.BorderThickness = new Thickness(0);
+            }
+        }
+
+        void MoveRailPill(int idx)
+        {
+            if (railPill == null) return;
+            if (idx < 0) { railPill.Visibility = Visibility.Collapsed; return; }
+            railPill.Visibility = Visibility.Visible;
+            double y = idx * 56.0;
+            if (!railPillInit)
+            {
+                railPillSpring.SnapTo(y);
+                railPillTransform.Y = y;
+                railPillInit = true;
+            }
+            else
+            {
+                SpringEngine.Go(railPillSpring, y, delegate(double v, double vel) { railPillTransform.Y = v; });
+            }
+        }
+
+        void StyleVerticalPill()
+        {
+            if (verticalPill == null) return;
+            if (Frost.On)
+            {
+                verticalPill.Background = Frost.TileStrong;
+                verticalPill.BorderBrush = Frost.Edge;
+                verticalPill.BorderThickness = new Thickness(1);
+            }
+            else if (Glass.On)
+            {
+                verticalPill.Background = Glass.SimulatedFace(0.12);
+                verticalPill.BorderBrush = Glass.Edge();
+                verticalPill.BorderThickness = new Thickness(1);
+            }
+            else
+            {
+                Color c = ThemeManager.CurrentColor;
+                verticalPill.Background = new SolidColorBrush(Color.FromArgb(30, c.R, c.G, c.B));
+                verticalPill.BorderThickness = new Thickness(0);
+            }
+        }
+
+        void MoveVerticalPill(int idx, bool animate)
+        {
+            if (verticalPill == null || verticalSecondaryBar == null) return;
+            if (idx < 0 || idx >= verticalButtons.Count)
+            {
+                verticalPill.Visibility = Visibility.Collapsed;
+                return;
+            }
+            var b = verticalButtons[idx];
+            if (b.ActualWidth <= 0)
+            {
+                verticalPill.Visibility = Visibility.Collapsed;
+                int again = idx; bool anim = animate;
+                Dispatcher.BeginInvoke(new Action(delegate { MoveVerticalPill(again, anim); }), DispatcherPriority.Loaded);
+                return;
+            }
+            double x = b.TranslatePoint(new Point(0, 0), verticalSecondaryBar).X;
+            double w = b.ActualWidth;
+            verticalPill.Width = w;
+            verticalPill.Visibility = Visibility.Visible;
+            if (!animate || !verticalPillInit)
+            {
+                verticalPillSpring.SnapTo(x);
+                verticalPillTransform.X = x;
+                verticalPillInit = true;
+            }
+            else
+            {
+                SpringEngine.Go(verticalPillSpring, x, delegate(double v, double vel) { verticalPillTransform.X = v; });
+            }
+        }
+
+        void UpdateVerticalSelection(int ii)
+        {
+            for (int i = 0; i < verticalButtons.Count; i++)
+            {
+                var b = verticalButtons[i];
+                b.SetColors(Color.FromArgb(0, 0, 0, 0), Color.FromArgb(0, 0, 0, 0),
+                    i == ii ? Palette.Text : Palette.Dim, Palette.Text);
+                if (i == ii) b.SetBold(true); else b.SetBold(false);
+            }
+            if (verticalSecondaryBar != null)
+                verticalSecondaryBar.Visibility = verticalButtons.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            StyleVerticalPill();
+            MoveVerticalPill(ii, true);
         }
 
         // 左侧栏：品牌区 / 用户名 / 当前版本 / H史聊天框 / 三个圆形按钮
@@ -674,9 +1116,11 @@ namespace HugeLauncher.Ui
             g.RowDefinitions.Add(UiHelpers.AutoRow());
             g.RowDefinitions.Add(UiHelpers.AutoRow());
             g.RowDefinitions.Add(UiHelpers.StarRow());
+            g.RowDefinitions.Add(UiHelpers.AutoRow());   // 气泡
+            g.RowDefinitions.Add(UiHelpers.AutoRow());   // 按钮组
 
             var brand = new StackPanel();
-            brand.Margin = new Thickness(24, 20, 0, 0);
+            brand.Margin = new Thickness(24, 15, 0, 0);
             var sub = new TextBlock();
             sub.Text = "社区驱动 · 离线模式 · HIL · By MAX";
             sub.Foreground = Palette.B(Palette.Dim);
@@ -687,7 +1131,7 @@ namespace HugeLauncher.Ui
             userCombo = new DarkComboBox();
             userCombo.IsEditable = true;
             userCombo.DisplayMemberPath = "Name";   // 账号选择器：条目是 Account，显示名字
-            userCombo.Margin = new Thickness(24, 22, 24, 0);
+            userCombo.Margin = new Thickness(24, 15, 24, 0);
             userCombo.ItemsSource = AccountStore.All();
             var selAcc = AccountStore.Selected();
             userCombo.Text = selAcc != null ? selAcc.Name : cfg.Username;
@@ -703,7 +1147,7 @@ namespace HugeLauncher.Ui
             versionText = new TextBlock();
             versionText.Foreground = Palette.B(Palette.Dim);
             versionText.FontSize = 10.5;
-            versionText.Margin = new Thickness(24, 8, 24, 0);
+            versionText.Margin = new Thickness(24, 15, 24, 0);
             versionText.TextTrimming = TextTrimming.CharacterEllipsis;
             RefreshVersionText();
             Grid.SetRow(versionText, 2);
@@ -719,16 +1163,18 @@ namespace HugeLauncher.Ui
             // 所以透镜吃镜像；显示层是下面这个实时 3D 史蒂夫，同矩形、后添加压在镜像上面
             steveLayer = new Grid();
             Grid.SetRow(steveLayer, 4);
+            Grid.SetRowSpan(steveLayer, 3);   // 延伸到气泡/按钮行后面，按钮才能透出史蒂夫
             g.Children.Add(steveLayer);
             // 史蒂夫：填充按钮上方的空区，头跟鼠标转、点击挥臂
             steveView = new SteveView();
-            steveView.Margin = new Thickness(0, 6, 0, 90);   // 底边下移：给脚留全高，别再被矩形裁掉
+            steveView.Margin = new Thickness(0, 6, 0, 12);   // 只留一点余量：头不碰聊天框即可
             steveView.MirrorImg.Margin = steveView.Margin;
             steveLayer.Children.Add(steveView.MirrorImg);
             // 镜像只是玻璃透镜的取图源：关玻璃时它停在最后一帧，会从透明视口底下透出成「第二个史蒂夫」——必须藏掉
             steveView.MirrorImg.Visibility = Glass.On ? Visibility.Visible : Visibility.Collapsed;
             Grid.SetRow(steveView, 4);
-            g.Children.Add(steveView);   // 保持在按钮下层：脚完整渲染（margin 已给足），透过玻璃按钮看到
+            Grid.SetRowSpan(steveView, 3);   // 与 steveLayer 同跨度
+            g.Children.Add(steveView);   // 保持在按钮下层：按钮透出史蒂夫，脚也完整
             ThemeManager.GlassChanged += delegate
             {
                 steveView.MirrorImg.Visibility = Glass.On ? Visibility.Visible : Visibility.Collapsed;
@@ -746,6 +1192,9 @@ namespace HugeLauncher.Ui
             btnInstances.GlassSource = steveLayer;
             btnInstances.SetFontSize(18);
             btnInstances.SetBold(true);   // 脚会搭到按钮上：加粗防腿影干扰读字（与启动按钮对等）
+            // 透明玻璃面：让下面的史蒂夫透出来，不再是一块实心白
+            btnInstances.SetColors(Color.FromArgb(56, 255, 255, 255), Color.FromArgb(110, 255, 255, 255),
+                Palette.Text, Palette.Text);
             btnInstances.SetPadding(new Thickness(0, 14, 0, 14));
             btnInstances.SetCornerRadius(new CornerRadius(10));
             btnInstances.Click += delegate { Navigate("instance:list"); };
@@ -773,12 +1222,14 @@ namespace HugeLauncher.Ui
             };
             btnLaunch.Click += delegate { LaunchGame(); };
             btnStack.Children.Add(btnLaunch);
-            Grid.SetRow(btnStack, 4);
+            Grid.SetRow(btnStack, 6);
+            Panel.SetZIndex(btnStack, 10);
             g.Children.Add(btnStack);
 
             // H史回复气泡：浮在「实例管理」按钮上方 12px，最后添加在最上层
             bubble = BuildBubble();
-            Grid.SetRow(bubble, 4);
+            Grid.SetRow(bubble, 5);
+            Panel.SetZIndex(bubble, 11);
             g.Children.Add(bubble);
             // 玻璃切换重建气泡脸（场上泡不动，下条新泡用新脸）
             ThemeManager.GlassChanged += delegate
@@ -786,7 +1237,8 @@ namespace HugeLauncher.Ui
                 if (bubbleVisible) return;
                 g.Children.Remove(bubble);
                 bubble = BuildBubble();
-                Grid.SetRow(bubble, 4);
+                Grid.SetRow(bubble, 5);
+                Panel.SetZIndex(bubble, 11);
                 g.Children.Add(bubble);
             };
             return g;
@@ -800,7 +1252,7 @@ namespace HugeLauncher.Ui
             wrap.BorderBrush = Palette.B(Palette.Line);
             wrap.BorderThickness = new Thickness(1);
             wrap.CornerRadius = new CornerRadius(4);
-            wrap.Margin = new Thickness(24, 10, 24, 0);
+            wrap.Margin = new Thickness(24, 15, 24, 0);
             wrap.MinHeight = 30;
             var grid = new Grid();
             chatInput = new TextBox();
@@ -887,7 +1339,7 @@ namespace HugeLauncher.Ui
             }
             b.CornerRadius = Glass.On ? new CornerRadius(20) : new CornerRadius(8);   // 玻璃=2.5× 大圆角
             b.Padding = Glass.On ? new Thickness(0) : new Thickness(10, 8, 10, 8);
-            b.Margin = new Thickness(24, 0, 24, 6);
+            b.Margin = new Thickness(24, 0, 24, 12);
             b.MaxWidth = 232;
             b.VerticalAlignment = VerticalAlignment.Bottom;
             b.Opacity = 0;
@@ -1016,10 +1468,7 @@ namespace HugeLauncher.Ui
             bubbleDecision = decision;
             bubbleText.Text = text;
             bubbleBtns.Visibility = withConfirm ? Visibility.Visible : Visibility.Collapsed;
-            // 停住位置：气泡底部与「版本选择/版本设置」按钮行保持 12px
-            double h = btnStack != null ? btnStack.ActualHeight : 0;
-            if (h < 10) h = 118;   // 布局未完成时的兜底
-            bubble.Margin = new Thickness(24, 0, 24, 26 + h + 12);
+            // 位置由 sidebar 的行结构保证：气泡 row5、按钮 row6，不再按按钮高度反推 margin
             bubbleVisible = true;
             bubble.Visibility = Visibility.Visible;
             var tf = Ani.Ts(bubble);
@@ -1178,16 +1627,28 @@ namespace HugeLauncher.Ui
             pillTg.Children.Add(groupPillTf);
             groupPill.RenderTransform = pillTg;
             groupPill.RenderTransformOrigin = new Point(0.5, 0.5);
-            groupPill.Visibility = Glass.On ? Visibility.Visible : Visibility.Collapsed;
+            groupPill.Visibility = (Glass.On || Frost.On) ? Visibility.Visible : Visibility.Collapsed;
+            groupPill.Opacity = 1;
             groupPillSpring = new Spring(7) { Stiffness = 200, Damping = 13 };
             BuildGroupPillFace();
-            // pill 压在文字层上面（13 定稿结构）：真实文字被衬底挡住，只显示透镜副本——拖动时文字弯曲而非重影
+            // 流光：pill 压在文字上（透镜副本）；霜面：pill 在文字背后，文字保持清晰
+            if (Frost.On) topRow.Children.Add(groupPill);
             topRow.Children.Add(tabStack);
+            if (Frost.On)
+            {
+                Panel.SetZIndex(groupPill, 0);   // 霜面：磨砂框在文字背后
+                Panel.SetZIndex(tabStack, 1);
+            }
+            else
+            {
+                Panel.SetZIndex(groupPill, 2);   // 流光：透镜 pill 必须压在文字上，否则折射副本重影
+                Panel.SetZIndex(tabStack, 0);
+            }
             // iOS 式抓取拖动：抓住放大、拖动果冻、松手弹簧吸附最近标签并切换
             groupPill.MouseLeftButtonDown += OnGroupPillDown;
             groupPill.MouseMove += OnGroupPillMove;
             groupPill.MouseLeftButtonUp += OnGroupPillUp;
-            topRow.Children.Add(groupPill);
+            if (!Frost.On) topRow.Children.Add(groupPill);
             groupIndicator = new Border();
             groupIndicator.Height = 2.5;
             groupIndicator.Width = 30;
@@ -1196,7 +1657,7 @@ namespace HugeLauncher.Ui
             groupIndicator.HorizontalAlignment = HorizontalAlignment.Left;
             groupIndicator.VerticalAlignment = VerticalAlignment.Bottom;
             groupIndicator.IsHitTestVisible = false;
-            groupIndicator.Visibility = Glass.On ? Visibility.Collapsed : Visibility.Visible;
+            groupIndicator.Visibility = (Glass.On || Frost.On) ? Visibility.Collapsed : Visibility.Visible;
             groupIndTf = new TranslateTransform(21, 0);
             groupIndicator.RenderTransform = groupIndTf;
             topRow.Children.Add(groupIndicator);
@@ -1204,7 +1665,7 @@ namespace HugeLauncher.Ui
             // 玻璃切换：pill 与底部指示条互换可见性（pill 归位到当前组），并重挂活底脸
             ThemeManager.GlassChanged += delegate
             {
-                bool on = Glass.On;
+                bool on = Glass.On || Frost.On;
                 groupPill.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
                 groupIndicator.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
                 if (on)
@@ -1225,6 +1686,8 @@ namespace HugeLauncher.Ui
             mid.ColumnDefinitions.Add(sideColDef);
             mid.ColumnDefinitions.Add(UiHelpers.StarCol());
             sideList = new StackPanel();
+            sideItems.Clear();
+            sideKeys.Clear();
             sideList.Margin = new Thickness(2, 0, 8, 0);
             // 玻璃模式共享滑动选中 pill：全胶囊，快照透镜底 + 折射环 + 高光罩；可抓取拖动（iOS 式）
             sidePill = new SquircleBorder();
@@ -1240,20 +1703,21 @@ namespace HugeLauncher.Ui
             sidePillTg.Children.Add(sidePillTf);
             sidePill.RenderTransform = sidePillTg;
             sidePill.RenderTransformOrigin = new Point(0.5, 0.5);
-            if (Glass.On) BuildPillFace();
-            sidePill.Visibility = Glass.On ? Visibility.Visible : Visibility.Collapsed;
+            if (Glass.On || Frost.On) BuildPillFace();
+            sidePill.Visibility = (Glass.On || Frost.On) ? Visibility.Visible : Visibility.Collapsed;
             ThemeManager.GlassChanged += delegate
             {
-                sidePill.Visibility = Glass.On ? Visibility.Visible : Visibility.Collapsed;
-                if (Glass.On) BuildPillFace();
+                sidePill.Visibility = (Glass.On || Frost.On) ? Visibility.Visible : Visibility.Collapsed;
+                if (Glass.On || Frost.On) BuildPillFace();
             };
             var sideWrap = new Grid();
-            // pill 压在文字上面：拖动滑过文字时透镜把文字弯曲放大（13 定稿结构，史莱姆开关联动背景透镜已被用户打回）
+            // 流光：pill 压文字上；霜面：pill 在文字背后
             sidePill.MouseLeftButtonDown += OnPillDown;
             sidePill.MouseMove += OnPillMove;
             sidePill.MouseLeftButtonUp += OnPillUp;
+            if (Frost.On) sideWrap.Children.Add(sidePill);
             sideWrap.Children.Add(sideList);
-            sideWrap.Children.Add(sidePill);
+            if (!Frost.On) sideWrap.Children.Add(sidePill);
             sideWrapPanel = sideWrap;   // 存字段：实例/账号详情等不在一级组的页面要整列隐藏
             mid.Children.Add(sideWrap);
             contentHost = new Grid();
@@ -1265,9 +1729,12 @@ namespace HugeLauncher.Ui
         }
 
         // 一级标签切换：指示条滑动 + 二级列表瀑布重建（25ms/项）
-        void SelectGroup(int idx)
+        void SelectGroup(int idx) { SelectGroup(idx, true); }
+
+        void SelectGroup(int idx, bool buildSide)
         {
-            if (activeGroup == idx) return;
+            if (ThemeManager.IsVertical) { SelectGroupVertical(idx, 0); return; }
+            if (activeGroup == idx && sideItems.Count > 0) return;
             activeGroup = idx;
             for (int i = 0; i < groupTabs.Length; i++)
             {
@@ -1280,9 +1747,9 @@ namespace HugeLauncher.Ui
                 Ani.Start("gt" + i, Ani.AaColor(brush, i == idx ? Palette.Text : Palette.Dim, 150));
                 groupTabs[i].FontWeight = i == idx ? FontWeights.SemiBold : FontWeights.Normal;
             }
-            if (Glass.On)
+            if (Glass.On || Frost.On)
             {
-                // 玻璃 pill 弹簧滑动（速度接果冻：移动拉长、到位挤扁回弹）；活底透镜逐帧跟齐
+                // 玻璃/霜面 pill 弹簧滑动（速度接果冻：移动拉长、到位挤扁回弹）；活底透镜逐帧跟齐
                 SpringEngine.Go(groupPillSpring, idx * 72 + 7, ApplyGroupPillSpring);
             }
             else
@@ -1291,6 +1758,7 @@ namespace HugeLauncher.Ui
                 Ani.Start("gind", Ani.Aa(delegate(double d) { groupIndTf.X += d; },
                     targetX - groupIndTf.X, 250, new AniEaseOutBack(Ani.Weak)));
             }
+            if (!buildSide) return;   // 账号/游离页没有二级项：保留旧栏内容到 swap，避免 70ms 空栏闪
             sideItems.Clear();
             sideKeys.Clear();
             sideList.Children.Clear();
@@ -1460,8 +1928,11 @@ namespace HugeLauncher.Ui
             // 狂点时旧组整组被替换/停止，新旧动画永不同时驱动同一元素的同一属性（掉帧元凶）
             Action swap = delegate
             {
+                if (sideWrapPanel != null) sideWrapPanel.Visibility = pendingSideVisible ? Visibility.Visible : Visibility.Collapsed;
+                if (sideCol != null) sideCol.Width = new GridLength(pendingSideWidth);
                 contentHost.Children.Clear();
                 next.Opacity = 0;
+                next.RenderTransform = new TranslateTransform(0, 16);   // 统一从下往上，杜绝页面自带横向位移
                 Ani.Ts(next).Y = 16;
                 contentHost.Children.Add(next);
                 currentPage = next;
@@ -1484,6 +1955,8 @@ namespace HugeLauncher.Ui
             var seq = new List<AniData>();
             if (oldPage != null)
             {
+                // 统一退场：先清掉页面可能残留的横向/缩放变换，只走 Y 轴，避免账号页等横向滑出
+                oldPage.RenderTransform = new TranslateTransform(0, 0);
                 seq.Add(Ani.AaOpacity(oldPage, -oldPage.Opacity, 70));
                 seq.Add(Ani.AaY(oldPage, -6, 70, new AniEaseInFluent(Ani.Weak)));
             }
@@ -1540,20 +2013,37 @@ namespace HugeLauncher.Ui
             if (gi < 0 && key != null && key.StartsWith("download:")) gi = 0;
             // 游离页面（实例管理/实例详情等不在任何一级组）：整列二级边栏隐藏并归零列宽；
             // 组存在但没有二级项（账号）同样隐藏
+            // 纵向布局：竖轨 + 横向二级，不走 118 列
+            if (ThemeManager.IsVertical)
+            {
+                if (gi < 0)
+                {
+                    if (verticalSecondaryBar != null) verticalSecondaryBar.Visibility = Visibility.Collapsed;
+                    return;
+                }
+                bool vSide = navGroups[gi].Labels.Length > 0;
+                if (gi != activeGroup || verticalButtons.Count == 0) SelectGroupVertical(gi, ii > 0 ? ii : 0);
+                else UpdateVerticalSelection(ii);
+                if (verticalSecondaryBar != null)
+                    verticalSecondaryBar.Visibility = vSide ? Visibility.Visible : Visibility.Collapsed;
+                return;
+            }
             bool sideVisible = gi >= 0 && navGroups[gi].Labels.Length > 0;
-            if (sideWrapPanel != null) sideWrapPanel.Visibility = sideVisible ? Visibility.Visible : Visibility.Collapsed;
-            if (sideCol != null) sideCol.Width = new GridLength(sideVisible ? 118 : 0);
+            // 不在页面还在场上时改列宽：先记下来，等旧页淡出、swap 那一帧再收/放，
+            // 新页直接以最终宽度入场，避免内容整体横移，也不给账号页留空列。
+            pendingSideVisible = sideVisible;
+            pendingSideWidth = sideVisible ? 118 : 0;
             // 游离页时顶部一级指示框（玻璃 pill / 底部指示条）也藏起来，离开才恢复
             bool topIndOn = gi >= 0;
-            if (groupPill != null) groupPill.Visibility = topIndOn && Glass.On ? Visibility.Visible : Visibility.Collapsed;
-            if (groupIndicator != null) groupIndicator.Visibility = topIndOn && !Glass.On ? Visibility.Visible : Visibility.Collapsed;
-            if (gi >= 0 && gi != activeGroup) SelectGroup(gi);
+            if (groupPill != null) groupPill.Visibility = topIndOn && (Glass.On || Frost.On) ? Visibility.Visible : Visibility.Collapsed;
+            if (groupIndicator != null) groupIndicator.Visibility = topIndOn && !(Glass.On || Frost.On) ? Visibility.Visible : Visibility.Collapsed;
+            if (gi >= 0 && (gi != activeGroup || sideItems.Count == 0)) SelectGroup(gi, sideVisible);
             if (gi >= 0 && navGroups[gi].Labels.Length == 0) ii = -1;   // 无二级项的组：选中 pill 也别亮
             for (int i = 0; i < sideItems.Count; i++) sideItems[i].SetSelected(i == ii);
             // 玻璃共享 pill 弹簧滑动到选中项（移动中纵向拉伸果冻）；无选中项或非玻璃模式隐藏
             if (sidePill != null)
             {
-                if (ii >= 0 && Glass.On)
+                if (ii >= 0 && (Glass.On || Frost.On))
                 {
                     sidePill.Visibility = Visibility.Visible;
                     if (!pillDragging) SpringEngine.Go(sidePillSpring, ii * 34.0, ApplyPillSpring);
@@ -1566,6 +2056,15 @@ namespace HugeLauncher.Ui
         // 只有透镜 + 顶部淡高光 + 边缘受光；拖动滑过文字时文字连续弯曲（无接缝环）
         void BuildPillFace()
         {
+            if (Frost.On)
+            {
+                if (sidePill == null) return;
+                sidePill.Child = null;
+                sidePill.Background = Frost.TileStrong;
+                sidePill.BorderBrush = Frost.Edge;
+                sidePill.BorderThickness = new Thickness(1);
+                return;
+            }
             if (!Glass.On || sidePill == null) return;
             Grid host;
             var rings = Glass.LensRings(sideList, 100, Glass.BandPx, out host, true);
@@ -1582,6 +2081,15 @@ namespace HugeLauncher.Ui
         // 一级 pill 玻璃脸（活底多环）：刷一级标签文字层；倒影淡（新版 Sheen 10% 起 30% 收）
         void BuildGroupPillFace()
         {
+            if (Frost.On)
+            {
+                if (groupPill == null) return;
+                groupPill.Child = null;
+                groupPill.Background = Frost.TileStrong;
+                groupPill.BorderBrush = Frost.Edge;
+                groupPill.BorderThickness = new Thickness(1);
+                return;
+            }
             if (!Glass.On || groupPill == null || tabStack == null) return;
             Grid host;
             var rings = Glass.LensRings(tabStack, 100, Glass.BandPx, out host, true);

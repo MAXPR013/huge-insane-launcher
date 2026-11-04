@@ -68,6 +68,7 @@ namespace HugeLauncher.Ui
         Window hostWin;                     // 缓存宿主窗口（最小化时渲染循环停摆）
 
         readonly Viewport3D viewport;   // 实时 3D 视口：屏幕显示走 GPU 合成（流畅）
+        PerspectiveCamera camera;        // 自适应相机：宽扁视口拉远，避免裁头切脚
         // 玻璃透镜源镜像：VisualBrush 刷 Viewport3D 在 GPU 实时路径会把整场景塞进画刷块、忽略布局偏移
         // （按钮里看到上半身而不是正下方的腿）。所以透镜源用这张 2D 位图镜像——摆进 steveLayer 和本控件同位，
         // 降帧（跟随 12Hz / 挥臂 30Hz）+ 半分辨率渲染，开销比每帧全尺寸 RTB 低一个数量级
@@ -85,8 +86,8 @@ namespace HugeLauncher.Ui
             MirrorImg.Stretch = Stretch.Fill;
             MirrorImg.IsHitTestVisible = false;
 
-            var camera = new PerspectiveCamera(
-                new Point3D(0, 17, 58), new Vector3D(0, 0, -1), new Vector3D(0, 1, 0), 33);
+            camera = new PerspectiveCamera(
+                new Point3D(0, 14, 58), new Vector3D(0, 0, -1), new Vector3D(0, 1, 0), 33);
             viewport.Camera = camera;
 
             var skin = LoadSkin();
@@ -175,7 +176,7 @@ namespace HugeLauncher.Ui
 
             Loaded += OnLoaded;
             Unloaded += OnUnloaded;
-            SizeChanged += delegate { RenderMirror(0); };   // 尺寸变了立刻补一张（不限帧）
+            SizeChanged += delegate { RenderMirror(0); };   // 尺寸变了补一帧
         }
 
         // 把实时视口当前姿态渲成镜像位图（满分辨率、随帧同步：RTB 按当前姿态同步渲，

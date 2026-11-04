@@ -79,21 +79,21 @@ namespace HugeLauncher.Ui.Pages
             catPillTg.Children.Add(catPillTf);
             catPill.RenderTransform = catPillTg;
             catPill.RenderTransformOrigin = new Point(0.5, 0.5);
-            catPill.Visibility = Glass.On ? Visibility.Visible : Visibility.Collapsed;
+            catPill.Visibility = (Glass.On || Frost.On) ? Visibility.Visible : Visibility.Collapsed;
             BuildCatPillFace();
-            // pill 压在文字层上面（13 定稿结构）：
-            // 真实文字被衬底挡住，只显示透镜副本——果冻时文字弯曲而非重影；IsHitTestVisible=false 不挡点击
+            // 流光：pill 压文字上；霜面：pill 在文字背后
+            if (Frost.On) catArena.Children.Add(catPill);
             catArena.Children.Add(catRow);
-            catArena.Children.Add(catPill);
+            if (!Frost.On) catArena.Children.Add(catPill);
             Grid.SetRow(catArena, 1);
             Children.Add(catArena);
             ApplyCatColors();
             // 玻璃开关切换：重建 pill 脸 + 换配色方案 + 重新落位
             ThemeManager.GlassChanged += delegate
             {
-                catPill.Visibility = Glass.On ? Visibility.Visible : Visibility.Collapsed;
+                catPill.Visibility = (Glass.On || Frost.On) ? Visibility.Visible : Visibility.Collapsed;
                 catPillPlaced = false;
-                if (Glass.On) BuildCatPillFace();
+                if (Glass.On || Frost.On) BuildCatPillFace();
                 ApplyCatColors();
                 SlideCatPill(false);
             };
@@ -136,7 +136,7 @@ namespace HugeLauncher.Ui.Pages
         {
             for (int i = 0; i < catButtons.Length; i++)
             {
-                if (Glass.On)
+                if (Glass.On || Frost.On)
                 {
                     catButtons[i].SetColors(Color.FromArgb(0, 0, 0, 0), Color.FromArgb(0, 0, 0, 0),
                         i == curCat ? Palette.Text : Palette.Dim, Palette.Text);
@@ -159,6 +159,15 @@ namespace HugeLauncher.Ui.Pages
         // 三级 pill 玻璃脸（活底多环）：刷分类按钮行的实时画面——滑过文字时文字连续弯曲
         void BuildCatPillFace()
         {
+            if (Frost.On)
+            {
+                if (catPill == null) return;
+                catPill.Child = null;
+                catPill.Background = Frost.TileStrong;
+                catPill.BorderBrush = Frost.Edge;
+                catPill.BorderThickness = new Thickness(1);
+                return;
+            }
             if (!Glass.On || catPill == null || catRow == null) return;
             Grid host;
             var rings = Glass.LensRings(catRow, 100, Glass.BandPx, out host, true);
@@ -175,7 +184,7 @@ namespace HugeLauncher.Ui.Pages
         // 滑动 pill 到当前分类按钮（宽度随文字宽；未布局完就排到布局后）
         void SlideCatPill(bool animate)
         {
-            if (!Glass.On || catPill == null) return;
+            if ((!Glass.On && !Frost.On) || catPill == null) return;
             var b = catButtons[curCat];
             if (b.ActualWidth < 2)
             {

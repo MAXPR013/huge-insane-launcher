@@ -17,13 +17,34 @@ namespace HugeLauncher.Ui
     class SettingsTile : Border
     {
         public readonly StackPanel Body;
+        public readonly Border Header;
         public SettingsTile(string category, string helpId = null)
         {
-            Background = Palette.B(Palette.Tile);
+            if (Frost.On)
+            {
+                Background = Frost.Tile;
+                BorderBrush = Frost.Edge;
+                BorderThickness = new Thickness(1);
+            }
+            else if (ThemeManager.IsLiquid)
+            {
+                Background = Glass.SimulatedFace(0.05);
+                BorderBrush = Glass.Edge();
+                BorderThickness = new Thickness(1);
+            }
+            else
+            {
+                Background = Palette.B(Palette.Tile);
+            }
             CornerRadius = new CornerRadius(10);
-            Padding = new Thickness(14, 10, 14, 12);
+            Padding = new Thickness(0);
             Margin = new Thickness(0, 0, 0, 12);
-            var sp = new StackPanel();
+
+            Header = new Border();
+            Header.Background = null;
+            Header.BorderThickness = new Thickness(0);
+            Header.Padding = new Thickness(14, 10, 14, 4);
+            FrameworkElement capEl = null;
             if (!string.IsNullOrEmpty(category))
             {
                 var cap = new TextBlock();
@@ -33,7 +54,7 @@ namespace HugeLauncher.Ui
                 var brush = new SolidColorBrush(ThemeManager.CurrentColor);
                 ThemeManager.ColorChanged += delegate { brush.Color = ThemeManager.CurrentColor; };
                 cap.Foreground = brush;
-                FrameworkElement capEl = cap;
+                capEl = cap;
                 if (!string.IsNullOrEmpty(helpId))
                 {
                     var capRow = new StackPanel();
@@ -44,12 +65,24 @@ namespace HugeLauncher.Ui
                     capRow.Children.Add(dot);
                     capEl = capRow;
                 }
-                capEl.Margin = new Thickness(0, 0, 0, 4);
-                sp.Children.Add(capEl);
+                Header.Child = capEl;
             }
+            else
+            {
+                Header.Visibility = Visibility.Collapsed;
+            }
+            Panel.SetZIndex(Header, 10);
+
             Body = new StackPanel();
-            sp.Children.Add(Body);
-            Child = sp;
+            Body.Margin = new Thickness(14, string.IsNullOrEmpty(category) ? 10 : 0, 14, 12);
+
+            var root = new Grid();
+            root.RowDefinitions.Add(UiHelpers.AutoRow());
+            root.RowDefinitions.Add(UiHelpers.AutoRow());
+            root.Children.Add(Header);
+            Grid.SetRow(Body, 1);
+            root.Children.Add(Body);
+            Child = root;
         }
     }
 
@@ -58,17 +91,22 @@ namespace HugeLauncher.Ui
         protected Config cfg;
         protected bool loading = true;   // 初始化期间不触发保存
         protected StackPanel stack;
+        SmoothScrollViewer scroll;
+        readonly List<StickyCard> sticky = new List<StickyCard>();
 
         protected SettingsBase(Config c)
         {
             cfg = c;
-            var scroll = new SmoothScrollViewer();
+            scroll = new SmoothScrollViewer();
             scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
             scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
             stack = new StackPanel();
             stack.Margin = new Thickness(16, 6, 16, 14);
             scroll.Content = stack;
             Content = scroll;
+            scroll.ScrollChanged += delegate { StickyHeaders.Update(scroll, sticky); };
+            scroll.SizeChanged += delegate { StickyHeaders.Update(scroll, sticky); };
+            IsVisibleChanged += delegate { if (IsVisible) StickyHeaders.Update(scroll, sticky); };
         }
 
         // 开一块大瓷砖，返回内容面板（后续控件往里面加）；helpId 非空则分类小字后跟「?」
@@ -76,6 +114,9 @@ namespace HugeLauncher.Ui
         {
             var t = new SettingsTile(category, helpId);
             stack.Children.Add(t);
+            sticky.Add(StickyHeaders.Attach(scroll, t, t.Header, t.Body));
+            Dispatcher.BeginInvoke(new Action(delegate { StickyHeaders.Update(scroll, sticky); }),
+                System.Windows.Threading.DispatcherPriority.Background);
             return t.Body;
         }
 
@@ -383,17 +424,37 @@ namespace HugeLauncher.Ui
             // H史 UiMap：主题色块行（set_theme 剧本 LookAt 目标）
             UiMap.Register("setup:theme", delegate { return themeStack; });
 
-            // 液态玻璃（总开关本身就是玻璃开关：任何模式都是 iOS 脸，所见即所得）
-            tileLook.Children.Add(MakeLabel("液态玻璃", "setup:glass"));
-            var chkGlass = AddCheckRow(tileLook, "", cfg.LiquidGlass);
-            chkGlass.ForceGlass = true;
-            chkGlass.Changed += delegate
+            // 主题：流光 / 霜面 / 素底（替代原来的液态玻璃开关）
+            tileLook.Children.Add(MakeLabel("主题", "setup:theme_skin"));
+            var skinCombo = new DarkComboBox();
+            skinCombo.ItemsSource = new string[] { "流光", "霜面", "素底" };
+            skinCombo.SelectedIndex = cfg.Skin == "frost" ? 1 : (cfg.Skin == "solid" ? 2 : 0);
+            skinCombo.SelectionChanged += delegate
             {
                 if (loading) return;
-                cfg.LiquidGlass = chkGlass.IsChecked;
+                string s = skinCombo.SelectedIndex == 1 ? "frost" : (skinCombo.SelectedIndex == 2 ? "solid" : "liquid");
+                cfg.Skin = s;
                 cfg.Save();
-                ThemeManager.ApplyGlass(chkGlass.IsChecked);
+                ThemeManager.ApplySkin(s);
             };
+            tileLook.Children.Add(skinCombo);
+            UiMap.Register("setup:theme_skin", delegate { return skinCombo; });
+
+            // 布局：经典横排 / 纵向舞台
+            tileLook.Children.Add(MakeLabel("布局", "setup:layout"));
+            var layoutCombo = new DarkComboBox();
+            layoutCombo.ItemsSource = new string[] { "经典横排", "纵向舞台" };
+            layoutCombo.SelectedIndex = cfg.Layout == "vertical" ? 1 : 0;
+            layoutCombo.SelectionChanged += delegate
+            {
+                if (loading) return;
+                string l = layoutCombo.SelectedIndex == 1 ? "vertical" : "classic";
+                cfg.Layout = l;
+                cfg.Save();
+                ThemeManager.ApplyLayout(l);
+            };
+            tileLook.Children.Add(layoutCombo);
+            UiMap.Register("setup:layout", delegate { return layoutCombo; });
 
             // 亮色模式（渐变罩切换，整套 UI 重建；输入框/下拉/滑条一并换肤）
             tileLook.Children.Add(MakeLabel("亮色模式", "setup:lightmode"));
@@ -430,6 +491,7 @@ namespace HugeLauncher.Ui
             {
                 if (loading) return;
                 cfg.SlimeOn = chkSlime.IsChecked;
+                cfg.SlimeUserSet = true;
                 Slime.On = cfg.SlimeOn;
                 cfg.Save();
                 Slime.FireChanged();   // 色板半透明化 + 整套 UI 重建

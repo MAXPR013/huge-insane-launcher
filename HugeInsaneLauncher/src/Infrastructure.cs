@@ -136,7 +136,9 @@ namespace HugeLauncher
         public string AiApiKey = "";            // DeepSeek API Key（选填；空 = 内置免费通道 AiClient.BuiltinRelay）
         public string AiEndpoint = "https://api.deepseek.com/v1";   // 仅自有 Key 时生效
         public bool AiAnim = true;              // H史拟人动画（ACTING 演戏开关）
-        public bool LiquidGlass = true;         // 液态玻璃（iOS 材质全面覆盖；关=工业风）
+        public bool LiquidGlass = true;         // 液态玻璃（兼容旧字段；true=流光）
+        public string Skin = "liquid";          // liquid=流光 / frost=霜面 / solid=素底
+        public string Layout = "classic";       // classic=经典横排 / vertical=纵向舞台
         public bool GcBoost = true;             // JVM GC 优化参数（治卡顿，默认开）
         public string ModrinthMirror = "";      // Modrinth 反代基址（空=官方直连）
         public bool FloatBallOn = true;         // 桌面悬浮球（H史/下载/服务器 极简面板）
@@ -146,6 +148,7 @@ namespace HugeLauncher
         public bool AutoDayNight = true;        // 自动调色：7:00-19:00 亮色，其余暗色（开着时手动开关被托管）
         public bool AutoUpdate = true;          // 启动时自动检查新版本（先问再更）
         public bool SlimeOn = true;             // 流动史莱姆背景（壁纸取色的 metaball 色块）
+        public bool SlimeUserSet;               // 用户是否手动动过史莱姆开关（首次按主题给默认值）
         public double SlimeBlurBg = 8;          // 背景模糊半径 px
         public int SlimeFrostMid = 60;          // [已废弃] 中层不透明度调节已砍，启动时锁定 60；字段仅为读旧配置不报错
         public double SlimeBlurFore = 0;        // [已废弃] 前景柔化已砍，启动时锁定 0
@@ -171,6 +174,7 @@ namespace HugeLauncher
         public static Config Load()
         {
             var c = new Config();
+            bool hasSkin = false;
             try
             {
                 if (!File.Exists(Paths.ConfigFile)) return c;
@@ -206,6 +210,8 @@ namespace HugeLauncher
                         case "AiEndpoint": c.AiEndpoint = v; break;
                         case "AiAnim": c.AiAnim = (v == "1"); break;
                         case "LiquidGlass": c.LiquidGlass = (v == "1"); break;
+                        case "Skin": c.Skin = v; hasSkin = true; break;
+                        case "Layout": c.Layout = v; break;
                         case "GcBoost": c.GcBoost = (v == "1"); break;
                         case "ModrinthMirror": c.ModrinthMirror = v; break;
                         case "FloatBallOn": c.FloatBallOn = (v == "1"); break;
@@ -215,6 +221,7 @@ namespace HugeLauncher
                         case "AutoDayNight": c.AutoDayNight = (v == "1"); break;
                         case "AutoUpdate": c.AutoUpdate = (v == "1"); break;
                         case "SlimeOn": c.SlimeOn = (v == "1"); break;
+                        case "SlimeUserSet": c.SlimeUserSet = (v == "1"); break;
                         case "SlimeBlurBg": if (double.TryParse(v, out d)) c.SlimeBlurBg = d; break;
                         case "SlimeFrostMid": if (int.TryParse(v, out n)) c.SlimeFrostMid = n; break;
                         case "SlimeBlurFore": if (double.TryParse(v, out d)) c.SlimeBlurFore = d; break;
@@ -222,6 +229,11 @@ namespace HugeLauncher
                 }
             }
             catch { }
+            if (!hasSkin) c.Skin = c.LiquidGlass ? "liquid" : "solid";
+            if (c.Skin != "liquid" && c.Skin != "frost" && c.Skin != "solid") c.Skin = "liquid";
+            if (c.Layout != "classic" && c.Layout != "vertical") c.Layout = "classic";
+            if (!c.SlimeUserSet) c.SlimeOn = (c.Skin != "frost");   // 史莱姆默认：霜面关，其余开
+            c.LiquidGlass = (c.Skin == "liquid");
             return c;
         }
 
@@ -229,6 +241,7 @@ namespace HugeLauncher
         {
             try
             {
+                LiquidGlass = (Skin == "liquid");
                 Paths.EnsureDirs();
                 var lines = new List<string>
                 {
@@ -249,6 +262,8 @@ namespace HugeLauncher
                     "AiEndpoint=" + AiEndpoint,
                     "AiAnim=" + (AiAnim ? "1" : "0"),
                     "LiquidGlass=" + (LiquidGlass ? "1" : "0"),
+                    "Skin=" + Skin,
+                    "Layout=" + Layout,
                     "GcBoost=" + (GcBoost ? "1" : "0"),
                     "ModrinthMirror=" + ModrinthMirror,
                     "FloatBallOn=" + (FloatBallOn ? "1" : "0"),
@@ -258,6 +273,7 @@ namespace HugeLauncher
                     "AutoDayNight=" + (AutoDayNight ? "1" : "0"),
                     "AutoUpdate=" + (AutoUpdate ? "1" : "0"),
                     "SlimeOn=" + (SlimeOn ? "1" : "0"),
+                    "SlimeUserSet=" + (SlimeUserSet ? "1" : "0"),
                     "SlimeBlurBg=" + SlimeBlurBg.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     "SlimeFrostMid=" + SlimeFrostMid,
                     "SlimeBlurFore=" + SlimeBlurFore.ToString(System.Globalization.CultureInfo.InvariantCulture),

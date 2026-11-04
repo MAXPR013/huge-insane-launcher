@@ -367,15 +367,30 @@ namespace HugeLauncher.Ui.Pages
             consoleBox.IsReadOnly = true;
             consoleBox.FontFamily = new FontFamily("Consolas");
             consoleBox.FontSize = 9;
-            consoleBox.Background = Palette.B(Palette.Light ? Color.FromRgb(0xF2, 0xF4, 0xF8) : Color.FromRgb(0x10, 0x12, 0x18));
             consoleBox.Foreground = Palette.B(Palette.Light ? Color.FromRgb(0x3A, 0x3F, 0x4E) : Color.FromRgb(0x9A, 0xA0, 0xB0));
             consoleBox.BorderThickness = new Thickness(0);
             consoleBox.TextWrapping = TextWrapping.Wrap;
             consoleBox.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
             consoleBox.Margin = new Thickness(0, 6, 0, 0);
             consoleBox.Padding = new Thickness(8);
-            Grid.SetRow(consoleBox, 1);
-            consoleGrid.Children.Add(consoleBox);
+            if (Frost.On)
+            {
+                consoleBox.Background = new SolidColorBrush(Colors.Transparent);
+                var cw = new Border();
+                cw.Background = new SolidColorBrush(Color.FromArgb(150, 6, 8, 12));
+                cw.BorderBrush = Frost.Edge;
+                cw.BorderThickness = new Thickness(1);
+                cw.CornerRadius = new CornerRadius(6);
+                cw.Child = consoleBox;
+                Grid.SetRow(cw, 1);
+                consoleGrid.Children.Add(cw);
+            }
+            else
+            {
+                consoleBox.Background = Palette.B(Palette.Light ? Color.FromRgb(0xF2, 0xF4, 0xF8) : Color.FromRgb(0x10, 0x12, 0x18));
+                Grid.SetRow(consoleBox, 1);
+                consoleGrid.Children.Add(consoleBox);
+            }
             // 命令输入行：回车发送（服务端控制台命令不用打 /）
             cmdBox = new HintTextBox("输入命令，回车发送（不用打 /），如 say 你好 / op MAX");
             cmdBox.Box.BorderBrush = Palette.B(Palette.Line);

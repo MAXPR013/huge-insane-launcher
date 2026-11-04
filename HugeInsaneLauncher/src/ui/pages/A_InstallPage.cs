@@ -23,6 +23,7 @@ namespace HugeLauncher.Ui.Pages
         TextBlock _loadingText;
         ScrollViewer _confirmView;
         StackPanel _confirmPanel;
+        readonly List<StickyCard> _sticky = new List<StickyCard>();
 
         // ---------- 版本列表数据 ----------
         bool _versionsLoaded;
@@ -114,6 +115,9 @@ namespace HugeLauncher.Ui.Pages
             _listView.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
             _listView.Content = _listPanel;
             Children.Add(_listView);
+            _listView.ScrollChanged += delegate { StickyHeaders.Update(_listView, _sticky); };
+            _listView.SizeChanged += delegate { StickyHeaders.Update(_listView, _sticky); };
+            IsVisibleChanged += delegate { if (IsVisible) StickyHeaders.Update(_listView, _sticky); };
 
             // 安装确认视图（页内切换，初始隐藏）
             _confirmPanel = new StackPanel();
@@ -130,6 +134,7 @@ namespace HugeLauncher.Ui.Pages
         public override void OnEnter()
         {
             RefreshInstalled();
+            StickyHeaders.Update(_listView, _sticky);
             if (!_versionsLoaded && !_versionsLoading) StartLoadVersions();
             else if (_versionsLoaded)
             {
@@ -314,6 +319,7 @@ namespace HugeLauncher.Ui.Pages
         void BuildVersionCards()
         {
             _buildSeq++;   // 作废在飞的分批构建
+            _sticky.Clear();   // 旧卡即将脱树，先断开引用
             // 保留头部两张（标题卡 + 加载提示），重建分组卡
             while (_listPanel.Children.Count > 2) _listPanel.Children.RemoveAt(2);
             _rowByVersion.Clear();
@@ -337,6 +343,8 @@ namespace HugeLauncher.Ui.Pages
             if (showExtra && olds.Count > 0)
                 _listPanel.Children.Add(BuildGroupCard("远古版 (" + olds.Count + ")", olds));
             _cardsBuilt = true;   // 之后进页走 RefreshInstalledTags 捷径
+            Dispatcher.BeginInvoke(new Action(delegate { StickyHeaders.Update(_listView, _sticky); }),
+                DispatcherPriority.Background);
         }
 
         Border BuildGroupCard(string title, List<GameCore.VersionEntry> items)
@@ -344,9 +352,29 @@ namespace HugeLauncher.Ui.Pages
             StackPanel sp;
             var card = MakeCard(out sp);
             card.Margin = new Thickness(16, 5, 16, 5);
+            card.Padding = new Thickness(0);
+            card.Child = null;
+
+            var header = new Border();
+            header.Background = null;
+            header.BorderThickness = new Thickness(0);
+            header.Padding = new Thickness(14, 14, 14, 8);
             var head = MakeText(title, 13, Palette.Text, true);
-            head.Margin = new Thickness(0, 0, 0, 8);
-            sp.Children.Add(head);
+            head.IsHitTestVisible = false;
+            header.Child = head;
+            Panel.SetZIndex(header, 10);
+
+            sp.Margin = new Thickness(14, 0, 14, 14);
+            var root = new Grid();
+            root.RowDefinitions.Add(UiHelpers.AutoRow());
+            root.RowDefinitions.Add(UiHelpers.AutoRow());
+            root.Children.Add(header);
+            Grid.SetRow(sp, 1);
+            root.Children.Add(sp);
+            card.Child = root;
+
+            _sticky.Add(StickyHeaders.Attach(_listView, card, header, sp));
+
             // 几百行版本行分批流入：每个调度回合 30 行，狂点标签时输入随时插队
             int seq = _buildSeq;
             Action<int> batch = null;
@@ -355,6 +383,7 @@ namespace HugeLauncher.Ui.Pages
                 if (seq != _buildSeq) return;   // 已重建，作废旧任务
                 int to = Math.Min(from + 30, items.Count);
                 for (int i = from; i < to; i++) sp.Children.Add(BuildVersionRow(items[i]));
+                StickyHeaders.Update(_listView, _sticky);
                 if (to < items.Count)
                     Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(delegate { batch(to); }));
             };

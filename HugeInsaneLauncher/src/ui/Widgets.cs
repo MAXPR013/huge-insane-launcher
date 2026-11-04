@@ -7,10 +7,14 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
+using System.Runtime.InteropServices;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
+using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 
 namespace HugeLauncher.Ui
 {
@@ -87,6 +91,28 @@ namespace HugeLauncher.Ui
                 Input = Color.FromArgb(a, Input.R, Input.G, Input.B);
                 Btn = Color.FromArgb(a, Btn.R, Btn.G, Btn.B);
                 BtnHover = Color.FromArgb(a, BtnHover.R, BtnHover.G, BtnHover.B);
+            }
+            // 霜面：面板/输入/按钮统一半透明，透出底下的壁纸模糊层
+            if (Frost.On)
+            {
+                if (Light)
+                {
+                    Panel = Color.FromArgb(150, 255, 255, 255);
+                    Tile = Color.FromArgb(120, 255, 255, 255);
+                    Input = Color.FromArgb(170, 255, 255, 255);
+                    Btn = Color.FromArgb(105, 255, 255, 255);
+                    BtnHover = Color.FromArgb(150, 255, 255, 255);
+                    Line = Color.FromArgb(70, 0, 0, 0);
+                }
+                else
+                {
+                    Panel = Color.FromArgb(40, 255, 255, 255);
+                    Tile = Color.FromArgb(26, 255, 255, 255);
+                    Input = Color.FromArgb(90, 8, 10, 14);
+                    Btn = Color.FromArgb(22, 255, 255, 255);
+                    BtnHover = Color.FromArgb(46, 255, 255, 255);
+                    Line = Color.FromArgb(54, 255, 255, 255);
+                }
             }
         }
 
@@ -207,6 +233,7 @@ namespace HugeLauncher.Ui
             MouseLeftButtonDown += OnDown;
             MouseLeftButtonUp += OnUp;
             ThemeManager.GlassChanged += delegate { BuildFace(); };
+            ThemeManager.SkinChanged += delegate { BuildFace(); };
         }
 
         // 玻璃罩层用半透明色，普通模式用原色；全透明底（对话框 ×、描边按钮）玻璃下保持透明，
@@ -226,6 +253,39 @@ namespace HugeLauncher.Ui
             // 否则玻璃开关切换时第二次进这里会抛「已是另一个元素的逻辑子元素」
             var oldPar = label.Parent as Decorator;
             if (oldPar != null) oldPar.Child = null;
+            if (Frost.On)
+            {
+                if (tabInGlass)
+                {
+                    var tb0 = new Border();
+                    tb0.Padding = pad;
+                    tb0.Child = label;
+                    face = tb0;
+                    sheenLayer = null;
+                    padBox = tb0;
+                    ApplyRadius();
+                    face.RenderTransform = scale;
+                    face.RenderTransformOrigin = new Point(0.5, 0.5);
+                    Content = face;
+                    RefreshStateColors();
+                    return;
+                }
+                var b = new Border();
+                b.Background = bgBrush;
+                b.BorderBrush = customBorder.HasValue ? Palette.B(customBorder.Value) : Frost.Edge;
+                b.BorderThickness = new Thickness(1);
+                b.Padding = pad;
+                b.Child = label;
+                face = b;
+                sheenLayer = null;
+                padBox = b;
+                ApplyRadius();
+                face.RenderTransform = scale;
+                face.RenderTransformOrigin = new Point(0.5, 0.5);
+                Content = face;
+                RefreshStateColors();
+                return;
+            }
             if (Glass.On)
             {
                 var fr = FaceRadius();
@@ -331,6 +391,7 @@ namespace HugeLauncher.Ui
         // CircleInGlass（标题栏 min/close）宽高相等 → 钳出来正好正圆
         CornerRadius FaceRadius()
         {
+            if (Frost.On) return circleInGlass ? new CornerRadius(10) : radius;
             if (!Glass.On) return radius;
             return new CornerRadius(1000);
         }
@@ -344,6 +405,17 @@ namespace HugeLauncher.Ui
         // 按当前开关/选中态刷新颜色（普通整底 / 玻璃罩层半透明）
         void RefreshStateColors()
         {
+            if (Frost.On)
+            {
+                Color acc = ThemeManager.CurrentColor;
+                bool accent = normalBg.R == acc.R && normalBg.G == acc.G && normalBg.B == acc.B;
+                Color fb = accent
+                    ? Color.FromArgb(150, acc.R, acc.G, acc.B)
+                    : ((SolidColorBrush)Frost.Button).Color;
+                bgBrush.Color = isChecked ? Color.FromArgb(180, acc.R, acc.G, acc.B) : fb;
+                fgBrush.Color = accent ? Colors.White : normalFg;
+                return;
+            }
             if (isChecked)
             {
                 bgBrush.Color = Glass.On ? Color.FromArgb(190, ThemeManager.CurrentColor.R, ThemeManager.CurrentColor.G, ThemeManager.CurrentColor.B) : ThemeManager.CurrentColor;
@@ -366,6 +438,7 @@ namespace HugeLauncher.Ui
             hoverBg = hover;
             normalFg = fg;
             hoverFg = hfg;
+            if (Frost.On) { RefreshStateColors(); return; }
             if (!isChecked)
             {
                 bgBrush.Color = FaceColor(normalBg);
@@ -404,6 +477,7 @@ namespace HugeLauncher.Ui
             hoverBg = hover;
             normalFg = fg;
             hoverFg = hfg;
+            if (Frost.On) { RefreshStateColors(); return; }
             if (!isChecked)
                 Ani.Start(aniKey + "c", Ani.AaColor(bgBrush, FaceColor(bg), ms), Ani.AaColor(fgBrush, fg, ms));
             else
@@ -439,14 +513,16 @@ namespace HugeLauncher.Ui
         void OnMouseEnter(object sender, MouseEventArgs e)
         {
             if (!enabledFlag || isChecked) return;
-            Ani.Start(aniKey + "c", Ani.AaColor(bgBrush, FaceColor(hoverBg), 100), Ani.AaColor(fgBrush, hoverFg, 100));
+            Color to = Frost.On ? ((SolidColorBrush)Frost.ButtonHover).Color : FaceColor(hoverBg);
+            Ani.Start(aniKey + "c", Ani.AaColor(bgBrush, to, 100), Ani.AaColor(fgBrush, hoverFg, 100));
             if (Glass.On) SpringEngine.Go(pressSpring, 1.03, ApplyPressSpring);
         }
 
         void OnMouseLeave(object sender, MouseEventArgs e)
         {
             if (!enabledFlag || isChecked) return;
-            Ani.Start(aniKey + "c", Ani.AaColor(bgBrush, FaceColor(normalBg), 200), Ani.AaColor(fgBrush, normalFg, 200));
+            Color to = Frost.On ? ((SolidColorBrush)Frost.Button).Color : FaceColor(normalBg);
+            Ani.Start(aniKey + "c", Ani.AaColor(bgBrush, to, 200), Ani.AaColor(fgBrush, normalFg, 200));
             if (Glass.On) SpringEngine.Go(pressSpring, 1.0, ApplyPressSpring);
         }
 
@@ -532,7 +608,7 @@ namespace HugeLauncher.Ui
         const double SwW = 46, SwH = 28, KnobD = 22, KnobPad = 3; // iOS 51:31 比例缩放
         static double KnobMax { get { return SwW - KnobD - KnobPad * 2; } }
 
-        bool SwitchMode { get { return ForceGlass || Glass.On; } }
+        bool SwitchMode { get { return ForceGlass || Glass.On || Frost.On; } }
 
         public MiniCheckBox()
         {
@@ -542,6 +618,7 @@ namespace HugeLauncher.Ui
             Cursor = Cursors.Hand;
             MouseLeftButtonUp += OnClick;
             ThemeManager.GlassChanged += delegate { BuildFace(); };
+            ThemeManager.SkinChanged += delegate { BuildFace(); };
         }
 
         void BuildFace()
@@ -557,7 +634,7 @@ namespace HugeLauncher.Ui
                 Color trackFrom = trackBrush != null ? trackBrush.Color : Palette.GlassA(56);
                 trackBrush = Palette.B(trackFrom);
                 track.Background = trackBrush;
-                track.BorderBrush = Glass.Edge() ?? Palette.B(Palette.Line);
+                track.BorderBrush = Frost.On ? Frost.Edge : (Glass.Edge() ?? Palette.B(Palette.Line));
                 track.BorderThickness = new Thickness(1);
                 trackLayer = new Grid();          // 轨道层：圆钮活底透镜的来源（绝不含圆钮）
                 trackLayer.Children.Add(track);
@@ -568,22 +645,37 @@ namespace HugeLauncher.Ui
                 knob.CornerRadius = new CornerRadius(KnobD / 2);
                 knobBrush = Palette.B(Colors.White);
                 knob.Background = null;   // 底交给夹心层
-                var knobHaze = new SquircleBorder();
-                knobHaze.CornerRadius = new CornerRadius(100);
-                knobHaze.Background = knobBrush;
-                knobHaze.IsHitTestVisible = false;
-                Grid knobHost;
-                knobRings = Glass.LensRings(trackLayer, 100, 4, out knobHost);
-                if (knobRings != null)
+                if (Frost.On)
                 {
-                    knobHost.Children.Add(knobHaze);
-                    knob.Child = knobRings;
+                    knobBrush.Color = ((SolidColorBrush)Frost.TileStrong).Color;
+                    var kh = new SquircleBorder();
+                    kh.CornerRadius = new CornerRadius(100);
+                    kh.Background = knobBrush;
+                    kh.BorderBrush = Frost.Edge;
+                    kh.BorderThickness = new Thickness(1);
+                    kh.IsHitTestVisible = false;
+                    knob.Child = kh;
+                    knobRings = null;
                 }
                 else
                 {
-                    var kg = new Grid();
-                    kg.Children.Add(knobHaze);
-                    knob.Child = kg;
+                    var knobHaze = new SquircleBorder();
+                    knobHaze.CornerRadius = new CornerRadius(100);
+                    knobHaze.Background = knobBrush;
+                    knobHaze.IsHitTestVisible = false;
+                    Grid knobHost;
+                    knobRings = Glass.LensRings(trackLayer, 100, 4, out knobHost);
+                    if (knobRings != null)
+                    {
+                        knobHost.Children.Add(knobHaze);
+                        knob.Child = knobRings;
+                    }
+                    else
+                    {
+                        var kg = new Grid();
+                        kg.Children.Add(knobHaze);
+                        knob.Child = kg;
+                    }
                 }
                 knob.HorizontalAlignment = HorizontalAlignment.Left;
                 knob.VerticalAlignment = VerticalAlignment.Center;
@@ -645,8 +737,8 @@ namespace HugeLauncher.Ui
         {
             if (!SwitchMode) return;
             var to = isChecked
-                ? Color.FromArgb(215, ThemeManager.CurrentColor.R, ThemeManager.CurrentColor.G, ThemeManager.CurrentColor.B)
-                : Palette.GlassA(56);
+                ? Color.FromArgb(170, ThemeManager.CurrentColor.R, ThemeManager.CurrentColor.G, ThemeManager.CurrentColor.B)
+                : (Frost.On ? Color.FromArgb(90, 255, 255, 255) : Palette.GlassA(56));
             if (animate) Ani.Start("mck" + GetHashCode(), Ani.AaColor(trackBrush, to, 180));
             else trackBrush.Color = to;
         }
@@ -942,6 +1034,7 @@ namespace HugeLauncher.Ui
             Content = layers;
 
             ThemeManager.GlassChanged += delegate { BuildFace(); };
+            ThemeManager.SkinChanged += delegate { BuildFace(); };
             SizeChanged += delegate { LayoutFace(); SnapThumb(); };
             MouseLeftButtonDown += OnDown;
             MouseMove += OnMove;
@@ -952,7 +1045,18 @@ namespace HugeLauncher.Ui
         // 玻璃/朴素两张脸（弹簧与事件不变）
         void BuildFace()
         {
-            if (Glass.On)
+            if (Frost.On)
+            {
+                track.Background = Frost.Input;
+                track.BorderBrush = Frost.Edge;
+                track.BorderThickness = new Thickness(1);
+                var cf = ThemeManager.CurrentColor;
+                fillBrush.Color = Color.FromArgb(220, cf.R, cf.G, cf.B);
+                thumbBrush.Color = Color.FromArgb(110, 255, 255, 255);
+                thumb.Child = null;
+                thumbRings = null;
+            }
+            else if (Glass.On)
             {
                 track.Background = Glass.SimulatedFace(0.05);
                 track.BorderBrush = Glass.Edge();
@@ -990,6 +1094,12 @@ namespace HugeLauncher.Ui
             thumbGlass = false;
             thumb.BorderBrush = null;
             thumb.BorderThickness = new Thickness(0);
+            if (Frost.On)
+            {
+                thumb.Background = thumbBrush;
+                thumb.BorderBrush = Frost.Edge;
+                thumb.BorderThickness = new Thickness(1);
+            }
             if (thumbRings != null) { thumbRings.BorderBrush = null; thumbRings.BorderThickness = new Thickness(0); }
             fill.Background = fillBrush;
             LayoutFace();
@@ -1229,17 +1339,21 @@ namespace HugeLauncher.Ui
     // 经绑定进活动元素的实例不冻，运行时换色即时生效）；项高亮保持静态色
     class DarkComboBox : ComboBox
     {
+        Popup openPopup;
+        Border openBorder;
+        bool snapBusy;
+        DispatcherTimer liveTimer;
         // 可变画刷持有者：IsFrozen 时整个换新实例 + PropertyChanged 让绑定重取
         class ComboPalette : System.ComponentModel.INotifyPropertyChanged
         {
             public static readonly ComboPalette Instance = new ComboPalette();
             public event System.ComponentModel.PropertyChangedEventHandler PropertyChanged;
             SolidColorBrush edge = Palette.B(Palette.Line);
-            SolidColorBrush popupBg = Palette.B(Palette.Panel);
-            SolidColorBrush popupEdge = Palette.B(Palette.Line);
-            public SolidColorBrush Edge { get { return edge; } }
-            public SolidColorBrush PopupBg { get { return popupBg; } }
-            public SolidColorBrush PopupEdge { get { return popupEdge; } }
+            Brush popupBg = Palette.B(Palette.Panel);
+            Brush popupEdge = Palette.B(Palette.Line);
+            public Brush Edge { get { return edge; } }
+            public Brush PopupBg { get { return popupBg; } }
+            public Brush PopupEdge { get { return popupEdge; } }
 
             static SolidColorBrush Swap(SolidColorBrush b, Color c)
             {
@@ -1250,20 +1364,26 @@ namespace HugeLauncher.Ui
 
             public void Refresh()
             {
-                if (Glass.On)
+                if (Frost.On)
+                {
+                    edge = Palette.B(Color.FromArgb(70, 255, 255, 255));
+                    popupBg = Frost.Popup;
+                    popupEdge = Frost.Edge;
+                }
+                else if (Glass.On)
                 {
                     // 玻璃配方分明暗：暗=白描边+深青弹层；亮=黑描边+近白弹层（弹层不透明压住底下内容）
                     edge = Swap(edge, Palette.GlassA(120));
-                    popupBg = Swap(popupBg, Palette.Light
+                    popupBg = Palette.B(Palette.Light
                         ? Color.FromArgb(242, 0xFF, 0xFF, 0xFF)
                         : Color.FromArgb(225, 0x1A, 0x1D, 0x26));
-                    popupEdge = Swap(popupEdge, Palette.GlassA(120));
+                    popupEdge = Palette.B(Palette.GlassA(120));
                 }
                 else
                 {
                     edge = Swap(edge, Palette.Line);
-                    popupBg = Swap(popupBg, Palette.Panel);
-                    popupEdge = Swap(popupEdge, Palette.Line);
+                    popupBg = Palette.B(Palette.Panel);
+                    popupEdge = Palette.B(Palette.Line);
                 }
                 var h = PropertyChanged;
                 if (h != null)
@@ -1298,6 +1418,7 @@ namespace HugeLauncher.Ui
             {
                 glassHooked = true;
                 ThemeManager.GlassChanged += delegate { ComboPalette.Instance.Refresh(); };
+                ThemeManager.SkinChanged += delegate { ComboPalette.Instance.Refresh(); };
             }
             ComboPalette.Instance.Refresh();
             Template = sharedTemplate;
@@ -1308,10 +1429,116 @@ namespace HugeLauncher.Ui
             MinHeight = 30;
             MaxDropDownHeight = 320;
             ThemeManager.GlassChanged += delegate { Background = FaceBrushForMode(); };
+            DropDownOpened += delegate
+            {
+                try
+                {
+                    openPopup = Template.FindName("PART_Popup", this) as Popup;
+                    openBorder = openPopup != null ? openPopup.Child as Border : null;
+                    if (openPopup == null || openBorder == null) return;
+                    ApplyPopupSnapshot(openPopup, openBorder);
+                    if (liveTimer == null)
+                    {
+                        liveTimer = new DispatcherTimer();
+                        liveTimer.Interval = TimeSpan.FromMilliseconds(120);
+                        liveTimer.Tick += delegate
+                        {
+                            if (!IsDropDownOpen || openPopup == null || openBorder == null)
+                            {
+                                liveTimer.Stop();
+                                return;
+                            }
+                            ApplyPopupSnapshot(openPopup, openBorder);
+                        };
+                    }
+                    liveTimer.Start();
+                }
+                catch { }
+            };
+            DropDownClosed += delegate
+            {
+                if (liveTimer != null) liveTimer.Stop();
+                openPopup = null;
+                openBorder = null;
+            };
+        }
+
+        // 下拉展开：直接渲染主窗内容根（不含独立 Popup）→ 裁弹层正下方 → 模糊。
+        // 不用 PrintWindow：分层窗口可能返回黑图；RTB 渲内容根在 2D/3D 上都已被 SteveView 验证过。
+        void ApplyPopupSnapshot(Popup popup, Border bd)
+        {
+            Window win = Window.GetWindow(this);
+            if (win == null || bd == null) return;
+            if (snapBusy) return;
+            snapBusy = true;
+            Dispatcher.BeginInvoke(new Action(delegate
+            {
+                try
+                {
+                    FrameworkElement child = popup.Child as FrameworkElement;
+                    FrameworkElement rootEl = win.Content as FrameworkElement;
+                    Visual root = rootEl;
+                    if (child == null || root == null) return;
+                    int ww = (int)Math.Round(rootEl.RenderSize.Width);
+                    int wh = (int)Math.Round(rootEl.RenderSize.Height);
+                    if (ww < 8 || wh < 8) return;
+                    // 半分辨率抓图：80px 模糊观感不变，RTB/Blur 成本降到 1/4，避免 UI 线程卡死
+                    int rw = Math.Max(4, ww / 2), rh = Math.Max(4, wh / 2);
+                    var rtb = new RenderTargetBitmap(rw, rh, 48, 48, PixelFormats.Pbgra32);
+                    rtb.Render(root);
+                    Point sp = child.PointToScreen(new Point(0, 0));
+                    Point wp = rootEl.PointFromScreen(sp);   // 相对内容根，不把 Margin=10 算进去
+                    int x = (int)Math.Round(wp.X), y = (int)Math.Round(wp.Y);
+                    int w = (int)Math.Round(child.ActualWidth), h = (int)Math.Round(child.ActualHeight);
+                    int x0 = Math.Max(0, x / 2), y0 = Math.Max(0, y / 2);
+                    int x1 = Math.Min(rw, (x + w) / 2), y1 = Math.Min(rh, (y + h) / 2);
+                    if (x1 - x0 < 2 || y1 - y0 < 2) return;
+                    // 弹层出窗时裁片会变短，Stretch 拉伸会变形；这种情况直接回退壁纸底，不硬拉
+                    int reqW = Math.Max(1, (x + w) / 2 - x / 2);
+                    int reqH = Math.Max(1, (y + h) / 2 - y / 2);
+                    if (x1 - x0 < reqW - 2 || y1 - y0 < reqH - 2)
+                    {
+                        bd.SetCurrentValue(Border.BackgroundProperty, Frost.On ? Frost.Popup : Palette.B(Palette.Panel));
+                        return;
+                    }
+                    // 外扩 48px 再模糊：否则 BlurEffect 在裁切边缘采到透明，弹层四周会塌成透明/圆形光斑
+                    int pad = 96;   // 半分辨率下 ≥ 2×模糊半径，压住高斯拖尾
+                    int ex0 = Math.Max(0, x0 - pad), ey0 = Math.Max(0, y0 - pad);
+                    int ex1 = Math.Min(rw, x1 + pad), ey1 = Math.Min(rh, y1 + pad);
+                    var crop = new CroppedBitmap(rtb, new Int32Rect(ex0, ey0, ex1 - ex0, ey1 - ey0));
+                    var img = new Image();
+                    img.Source = crop;
+                    img.Stretch = Stretch.Fill;
+                    img.Width = crop.PixelWidth;
+                    img.Height = crop.PixelHeight;
+                    img.Effect = new BlurEffect { Radius = 40, KernelType = KernelType.Gaussian };
+                    var host = new Grid();
+                    host.Width = crop.PixelWidth;
+                    host.Height = crop.PixelHeight;
+                    host.ClipToBounds = true;
+                    host.Children.Add(img);
+                    host.Measure(new Size(crop.PixelWidth, crop.PixelHeight));
+                    host.Arrange(new Rect(0, 0, crop.PixelWidth, crop.PixelHeight));
+                    host.UpdateLayout();
+                    var blurred = new RenderTargetBitmap(crop.PixelWidth, crop.PixelHeight, 96, 96, PixelFormats.Pbgra32);
+                    blurred.Render(host);
+                    var center = new CroppedBitmap(blurred, new Int32Rect(x0 - ex0, y0 - ey0, x1 - x0, y1 - y0));
+                    var brush = new ImageBrush(center);
+                    brush.Stretch = Stretch.Fill;
+                    bd.SetCurrentValue(Border.BackgroundProperty, brush);
+                    bd.SetCurrentValue(Border.BorderBrushProperty, Frost.On ? Frost.Edge : Glass.Edge());
+                }
+                catch
+                {
+                    bd.SetCurrentValue(Border.BackgroundProperty, Frost.On ? Frost.Popup : Palette.B(Palette.Panel));
+                }
+                finally { snapBusy = false; }
+            }), DispatcherPriority.Loaded);
         }
 
         static Brush FaceBrushForMode()
         {
+            if (Frost.On) return Frost.Input;
             if (!Glass.On) return Palette.B(Palette.Input);
             // 玻璃框体：暗=深青罩；亮=浅黑雾（白罩叠白底会隐形，iOS 亮色系用压暗罩）
             return Palette.Light
@@ -1397,11 +1624,15 @@ namespace HugeLauncher.Ui
             // 弹出列表
             var popup = new FrameworkElementFactory(typeof(Popup));
             popup.Name = "PART_Popup";
+            popup.SetValue(Popup.AllowsTransparencyProperty, true);
             var popBind = new Binding();
             popBind.Path = new PropertyPath("IsDropDownOpen");
             popBind.RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent);
             popup.SetBinding(Popup.IsOpenProperty, popBind);
             popup.SetValue(Popup.PlacementProperty, PlacementMode.Bottom);
+            var popupWidth = new Binding("ActualWidth");
+            popupWidth.RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent);
+            popup.SetBinding(FrameworkElement.WidthProperty, popupWidth);
             var pbd = new FrameworkElementFactory(typeof(Border));
             var popBgBind = new Binding("PopupBg");
             popBgBind.Source = ComboPalette.Instance;
@@ -1601,13 +1832,28 @@ namespace HugeLauncher.Ui
         {
             var g = new Grid();
             Box = new TextBox();
-            Box.Background = Palette.B(Palette.Input);
             Box.Foreground = Palette.B(Palette.Text);
             Box.BorderThickness = new Thickness(0);
             Box.Padding = new Thickness(9, 6, 9, 6);
             Box.FontSize = 12;
             Box.CaretBrush = Palette.B(Palette.Text);
             Box.VerticalContentAlignment = VerticalAlignment.Center;
+            if (Frost.On)
+            {
+                Box.Background = Brushes.Transparent;
+                var bd = new Border();
+                bd.Background = Frost.Input;
+                bd.BorderBrush = Frost.Edge;
+                bd.BorderThickness = new Thickness(1);
+                bd.CornerRadius = new CornerRadius(4);
+                bd.Child = Box;
+                g.Children.Add(bd);
+            }
+            else
+            {
+                Box.Background = Palette.B(Palette.Input);
+                g.Children.Add(Box);
+            }
             hint = new TextBlock();
             hint.Text = hintText;
             hint.Foreground = Palette.B(Palette.Dim);
@@ -1615,7 +1861,6 @@ namespace HugeLauncher.Ui
             hint.IsHitTestVisible = false;
             hint.VerticalAlignment = VerticalAlignment.Center;
             hint.Margin = new Thickness(10, 0, 0, 0);
-            g.Children.Add(Box);
             g.Children.Add(hint);
             Box.TextChanged += delegate { hint.Visibility = Box.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed; };
             Content = g;
@@ -1680,18 +1925,18 @@ namespace HugeLauncher.Ui
 
         Color HoverColor()
         {
-            return Glass.On ? Palette.GlassA(22) : Palette.Btn;
+            return (Glass.On || Frost.On) ? Palette.GlassA(22) : Palette.Btn;
         }
 
         Color SelectedColor()
         {
-            return Glass.On ? Palette.GlassA(46) : Palette.Btn;
+            return (Glass.On || Frost.On) ? Palette.GlassA(46) : Palette.Btn;
         }
 
         // 模式脸：玻璃=圆角加大（选中态由侧栏共享滑动 pill 表达，本项不画底）；普通=原样
         void ApplyModeFace()
         {
-            if (Glass.On)
+            if (Glass.On || Frost.On)
             {
                 back.CornerRadius = new CornerRadius(9);
                 back.BorderBrush = null;
@@ -1706,7 +1951,7 @@ namespace HugeLauncher.Ui
             }
             // 颜色重刷（玻璃下选中项无底：共享 pill 在后面衬着）
             Ani.Start(aniKey + "h", Ani.AaColor(backBrush,
-                isSelected && !Glass.On ? SelectedColor() : Colors.Transparent, 120));
+                isSelected && !(Glass.On || Frost.On) ? SelectedColor() : Colors.Transparent, 120));
         }
 
         public bool Selected { get { return isSelected; } }
@@ -1718,9 +1963,9 @@ namespace HugeLauncher.Ui
             if (isSelected == v) return;
             isSelected = v;
             label.FontWeight = v ? FontWeights.SemiBold : FontWeights.Normal;
-            Ani.Start(aniKey + "h", Ani.AaColor(backBrush, v && !Glass.On ? SelectedColor() : Colors.Transparent, 120));
+            Ani.Start(aniKey + "h", Ani.AaColor(backBrush, v && !(Glass.On || Frost.On) ? SelectedColor() : Colors.Transparent, 120));
             Ani.Start(aniKey + "t", Ani.AaColor(labelBrush, v ? Palette.Text : Palette.Dim, 150));
-            if (Glass.On) return;   // 玻璃：选中态由共享滑动 pill 表达，本项只变字色/字重（上面已做）
+            if (Glass.On || Frost.On) return;   // 玻璃/霜面：选中态由共享滑动 pill 表达
             double from = indicator.Height;
             if (v)
                 Ani.Start(aniKey + "i", Ani.AaProgress(delegate(double e) { indicator.Height = from + (16 - from) * e; },

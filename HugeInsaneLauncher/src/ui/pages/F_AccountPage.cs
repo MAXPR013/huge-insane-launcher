@@ -86,6 +86,7 @@ namespace HugeLauncher.Ui.Pages
         public override void OnEnter()
         {
             RebuildAll();
+            AccountStore.Changed -= OnStoreChanged;   // 防同页重复 DeferredEnter 叠加订阅
             AccountStore.Changed += OnStoreChanged;
         }
 
