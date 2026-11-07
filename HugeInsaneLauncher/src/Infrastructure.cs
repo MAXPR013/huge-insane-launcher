@@ -74,6 +74,7 @@ namespace HugeLauncher
                     }
                 }
                 EnsureItems(imgRoot, asm);
+                EnsureBlocks3D(imgRoot, asm);
                 // 调试：HIL_ICON_DUMP=oak_fence,stone_stairs 启动时把方块模型图标渲染出来，便于离线验收
                 string dump = Environment.GetEnvironmentVariable("HIL_ICON_DUMP");
                 if (!string.IsNullOrEmpty(dump))
@@ -89,6 +90,32 @@ namespace HugeLauncher
             catch { }   // 只读目录等异常不影响启动
         }
 
+        // 3D 方块图标：内嵌 blocks3d.zip（预渲染好的等距图标），首次运行解到 Images\Blocks3D。
+        // 没有它的话，把 exe 拷到没有 .minecraft 的机器上，合成查询会退回平面贴图（2D）。
+        static void EnsureBlocks3D(string imgRoot, Assembly asm)
+        {
+            try
+            {
+                string dir = Path.Combine(imgRoot, "Blocks3D");
+                string marker = Path.Combine(dir, ".v");
+                if (File.Exists(marker)) return;
+                using (Stream s = asm.GetManifestResourceStream("img.blocks3d.zip"))
+                {
+                    if (s == null) return;
+                    string tmp = Path.Combine(imgRoot, "blocks3d.tmp.zip");
+                    using (FileStream fs = new FileStream(tmp, FileMode.Create, FileAccess.Write))
+                        s.CopyTo(fs);
+                    try
+                    {
+                        System.IO.Compression.ZipFile.ExtractToDirectory(tmp, dir);
+                        File.WriteAllText(marker, "1");
+                    }
+                    catch { }
+                    finally { try { File.Delete(tmp); } catch { } }
+                }
+            }
+            catch { }
+        }
         // 物品贴图：内嵌 items.zip（从游戏 jar 抽的 item/block PNG），首次运行整体解到 Images\Items。
         // 用 .v 标记版本：贴图集更新后改版本号，老目录会自动重解（否则新加的图标永远不出现）。
         const string ItemsVersion = "3";

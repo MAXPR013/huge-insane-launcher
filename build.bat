@@ -12,6 +12,7 @@ rem HugeInsaneLauncher\Images on startup (see Paths.EnsureImages).
  -win32icon:"HugeInsaneLauncher\Images\hil.ico" ^
  -resource:"HugeInsaneLauncher\Images\steve.png",stevepng ^
  -resource:"HugeInsaneLauncher\Images\items.zip",img.items.zip ^
+ -resource:"HugeInsaneLauncher\Images\blocks3d.zip",img.blocks3d.zip ^
  -resource:"HugeInsaneLauncher\tools\lan-agent\hil-lan-agent.jar",hil-lan-agent.jar ^
  -resource:"HugeInsaneLauncher\tools\cubiomes.dll",cubiomes.dll ^
  -resource:"HugeInsaneLauncher\Images\Blocks\Anvil.png",img.Blocks.Anvil.png ^
