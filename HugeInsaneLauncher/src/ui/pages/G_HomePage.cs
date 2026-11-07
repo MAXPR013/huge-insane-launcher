@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using HugeLauncher.Ui;
@@ -245,6 +246,7 @@ namespace HugeLauncher.Ui.Pages
             month.Foreground = Palette.B(Palette.Text);
             g.Children.Add(month);
 
+            TextBlock line = null;
             var grid = new UniformGrid();
             grid.Columns = 7;
             grid.Margin = new Thickness(0, 8, 0, 0);
@@ -267,21 +269,55 @@ namespace HugeLauncher.Ui.Pages
                 t.FontSize = 10;
                 t.HorizontalAlignment = HorizontalAlignment.Center;
                 t.VerticalAlignment = VerticalAlignment.Center;
+                DateTime day = new DateTime(now.Year, now.Month, d);
                 bool today = d == now.Day;
-                t.Foreground = Palette.B(today ? ThemeManager.CurrentColor : Palette.Text);
-                if (today) t.FontWeight = FontWeights.Bold;
+                bool done = Checkin.IsChecked(day);
+                t.Foreground = Palette.B(today ? ThemeManager.CurrentColor : (done ? ThemeManager.CurrentColor : Palette.Text));
+                if (today || done) t.FontWeight = FontWeights.Bold;
+                if (done)
+                {
+                    t.Text = d + " ●";
+                    t.Opacity = 0.95;
+                }
+                if (today && !done)
+                {
+                    t.Cursor = Cursors.Hand;
+                    t.ToolTip = "点一下打卡";
+                }
                 grid.Children.Add(t);
+                var cell = t;
+                cell.MouseLeftButtonUp += delegate
+                {
+                    if (Checkin.IsChecked(day)) return;
+                    Checkin.MarkToday();
+                    cell.Text = d + " ●";
+                    cell.FontWeight = FontWeights.Bold;
+                    cell.Cursor = Cursors.Arrow;
+                    cell.ToolTip = null;
+                    UpdateCheckinLine(line);
+                };
             }
             Grid.SetRow(grid, 1);
             g.Children.Add(grid);
 
-            var line = Cap("● 连续签到 6 天 · 本月 12 天");
+            line = Cap("");
+            UpdateCheckinLine(line);
             line.Margin = new Thickness(0, 6, 0, 0);
             Grid.SetRow(line, 2);
             g.Children.Add(line);
             return Wrap("签到", g);
         }
 
+        static void UpdateCheckinLine(TextBlock line)
+        {
+            if (line == null) return;
+            int streak = Checkin.Streak();
+            int month = Checkin.MonthCount();
+            bool todayDone = Checkin.IsChecked(DateTime.Now);
+            line.Text = todayDone
+                ? "● 连续签到 " + streak + " 天 · 本月 " + month + " 天"
+                : "● 连续 " + streak + " 天 · 本月 " + month + " 天 · 点今天日期打卡";
+        }
         UIElement BuildIdea()
         {
             var g = new Grid();

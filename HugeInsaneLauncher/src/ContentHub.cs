@@ -50,6 +50,7 @@ namespace HugeLauncher
             {
                 bool changed = false;
                 try { changed |= Fetch("news", News); } catch { }
+                if (!changed) { try { changed |= FetchMcNews(); } catch { } }
                 try { changed |= Fetch("notice", Notices); } catch { }
                 if (changed)
                 {
@@ -66,6 +67,7 @@ namespace HugeLauncher
             {
                 bool changed = false;
                 try { changed |= Fetch("news", News); } catch { }
+                if (!changed) { try { changed |= FetchMcNews(); } catch { } }
                 try { changed |= Fetch("notice", Notices); } catch { }
                 if (changed)
                 {
@@ -75,6 +77,53 @@ namespace HugeLauncher
             });
         }
 
+        // 内容后端没部署时，直接抓 minecraft.net 的真实文章列表（不再编造标题）
+        static bool FetchMcNews()
+        {
+            string html;
+            try
+            {
+                try { ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12; } catch { }
+                var wc = new WebClient();
+                wc.Headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) HIL/" + HugeLauncher.Ui.MainWindow.Version;
+                wc.Encoding = System.Text.Encoding.UTF8;
+                html = wc.DownloadString("https://www.minecraft.net/en-us/article");
+            }
+            catch (Exception ex) { return false; }
+            if (string.IsNullOrEmpty(html)) return false;
+            var seen = new System.Collections.Generic.HashSet<string>();
+            var list = new List<NewsItem>();
+            var ms = System.Text.RegularExpressions.Regex.Matches(html, "href=\"(/en-us/article/[a-z0-9\\-]+)\"");
+            for (int i = 0; i < ms.Count && list.Count < 9; i++)
+            {
+                string path = ms[i].Groups[1].Value;
+                if (!seen.Add(path)) continue;
+                var n = new NewsItem();
+                n.Title = SlugTitle(path);
+                n.Sub = "来自 minecraft.net";
+                n.Date = "";
+                n.Url = "https://www.minecraft.net" + path;
+                list.Add(n);
+            }
+            if (list.Count == 0) return false;
+            lock (News) { News.Clear(); News.AddRange(list); }
+            return true;
+        }
+
+        static string SlugTitle(string path)
+        {
+            int slash = path.LastIndexOf('/');
+            string slug = slash >= 0 ? path.Substring(slash + 1) : path;
+            string[] parts = slug.Split('-');
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (parts[i].Length == 0) continue;
+                if (sb.Length > 0) sb.Append(' ');
+                sb.Append(char.ToUpper(parts[i][0])).Append(parts[i].Substring(1));
+            }
+            return sb.ToString();
+        }
         static bool Fetch<T>(string name, List<T> target) where T : class
         {
             var wc = new WebClient();
@@ -158,18 +207,13 @@ namespace HugeLauncher
         {
             if (News.Count == 0)
             {
-                string hub = "https://www.minecraft.net/en-us/news";
+                // 离线兜底：不编造标题，只提示取不到；链接给能打开的地址
+                string hub = "https://www.minecraft.net/en-us/article";
                 string[][] rows = new string[][]
                 {
-                    new[] { "26.4 Snapshot 7 发布", "新音乐唱片与一批平衡调整", "11-03" },
-                    new[] { "26.3 正式版上线", "新的生物群系与结构", "10-21" },
-                    new[] { "社区服主访谈：一年做十张地图", "来自苦力怕论坛", "10-18" },
-                    new[] { "26.2 补丁：铜傀儡行为修正", "顺带修了 20 个崩溃", "10-09" },
-                    new[] { "开发者日志：结构生成怎么调参", "关于要塞与村庄的距离", "09-28" },
-                    new[] { "26.1 数据包格式变更", "自定义维度需要迁移", "09-15" },
-                    new[] { "月度建筑大赛结果公布", "本期主题：下界交通", "09-02" },
-                    new[] { "26.0 正式发布", "新的合成台与物品栏改动", "08-20" },
-                    new[] { "服务器性能调优指南", "TPS 从 12 到 20 的实践", "08-06" }
+                    new[] { "暂时取不到新闻（离线）", "点这里打开 minecraft.net 文章列表", "" },
+                    new[] { "检查网络后会自动刷新", "首页新闻每 30 分钟重新拉一次", "" },
+                    new[] { "新闻源：minecraft.net", "官方文章列表，打开即跳原文", "" }
                 };
                 for (int i = 0; i < rows.Length; i++)
                 {
@@ -184,8 +228,8 @@ namespace HugeLauncher
             if (Notices.Count == 0)
             {
                 var n = new NoticeItem();
-                n.Title = "26.12 更新预告：首页小部件、种子地图内测、账号页重做";
-                n.Date = "2 天前";
+                n.Title = "HIL " + HugeLauncher.Ui.MainWindow.Version + " 已发布：导航自定义、新手引导、种子地图加速";
+                n.Date = "本次更新";
                 Notices.Add(n);
             }
         }
