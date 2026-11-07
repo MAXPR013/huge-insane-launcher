@@ -19,8 +19,8 @@ namespace HugeLauncher.Ui
     {
         const string BrandName = "Huge Insane Launcher";
         // 版本号规则：年份.月份.该月第几个版本（当月首个省略末项，第二个为 1）
-        public const string Version = "26.12.0";
-        public const string Channel = "Alpha";   // 渠道徽章：Alpha/Beta/Release
+        public const string Version = "26.11.2";
+        public const string Channel = "Release";   // 渠道徽章：Alpha/Beta/Release
 
         Config cfg;
         DarkComboBox userCombo;
@@ -34,7 +34,7 @@ namespace HugeLauncher.Ui
         UIElement currentPage;
         Dictionary<string, UIElement> pages = new Dictionary<string, UIElement>();
         // 两级导航：一级标签（下载/设置）+ 二级边栏
-        class NavGroup { public string Name; public string[] Labels; public string[] Keys; }
+        class NavGroup { public string Key; public string Name; public string Icon; public bool Hidden; public string[] Labels; public string[] Keys; }
         NavGroup[] navGroups;
         int activeGroup = -1;
         TextBlock[] groupTabs;
@@ -55,6 +55,8 @@ namespace HugeLauncher.Ui
         StackPanel tabStack;         // 一级标签文字层（一级 pill 的活底来源）
         Grid groupArena;             // 一级 pill 的活动容器（拖动取坐标用）
         StackPanel sideList;
+        Grid[] railItems;        // 左侧导航项（Shift+S 时把被隐藏的临时显示出来）
+        bool navPeek;             // 正在按 Shift+S 偷看隐藏导航
         Grid sideWrapPanel;          // 二级边栏整列外壳（实例管理/详情等游离页时隐藏）
         ColumnDefinition sideCol;    // 二级边栏列宽（游离页时归零，不留空带）
         bool pendingSideVisible;     // 下一次换页 swap 时才生效的侧栏状态
@@ -135,6 +137,8 @@ namespace HugeLauncher.Ui
             if (Environment.GetEnvironmentVariable("HIL_ONBOARD_DEMO") == "1") cfg.Onboarded = false;
             AccountStore.Init(cfg);   // 账号库：首启从用户名历史迁移离线账号
             PageBase.RestartOnboardHandler = RestartOnboarding;
+            PageBase.NavRefreshHandler = delegate { navPeek = false; RebuildUi(); };
+            if (Environment.GetEnvironmentVariable("HIL_NAV_PEEK") == "1") navPeek = true;   // 调试：启动即偷看隐藏项
             PageBase.ModalShowHandler = ShowWindowModal;
             PageBase.ModalHideHandler = HideWindowModal;
             AccountStore.Changed += delegate { RefreshAccounts(); RefreshSteve(); };
@@ -278,6 +282,25 @@ namespace HugeLauncher.Ui
             // 主窗最小化/还原 → 悬浮球模式同步（用户手动最小化也会出现球）
             StateChanged += delegate { SyncBallMode(); };
             // 转球倒计时的"用户在操作"判定：点击/按键/鼠标移动都刷新时刻
+            // 任何地方按 Shift+S：临时显示被隐藏的导航项，松开立刻收回
+            PreviewKeyDown += delegate(object s, KeyEventArgs e)
+            {
+                if (e.Key == Key.S && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+                {
+                    if (!navPeek) { navPeek = true; ApplyNavPeek(); }
+                    e.Handled = true;
+                }
+            };
+            PreviewKeyUp += delegate(object s, KeyEventArgs e)
+            {
+                if (!navPeek) return;
+                if (e.Key == Key.S || e.Key == Key.LeftShift || e.Key == Key.RightShift)
+                {
+                    navPeek = false;
+                    ApplyNavPeek();
+                }
+            };
+            LostKeyboardFocus += delegate { if (navPeek) { navPeek = false; ApplyNavPeek(); } };
             PreviewMouseDown += delegate { lastInput = DateTime.Now; };
             PreviewKeyDown += delegate { lastInput = DateTime.Now; };
             PreviewMouseMove += delegate(object s, MouseEventArgs e)
@@ -847,23 +870,73 @@ namespace HugeLauncher.Ui
         }
 
         // ===== 纵向舞台：280 史蒂夫 + 72 竖轨 + 右上二级 + 页面 =====
+        // 导航分组：顺序/显隐来自 NavCatalog（config.ini 的 NavOrder / NavHidden）
         void InitNavGroups()
         {
-            navGroups = new[]
+            var order = NavCatalog.OrderFrom(cfg);
+            var hidden = NavCatalog.HiddenFrom(cfg);
+            var list = new List<NavGroup>();
+            for (int i = 0; i < order.Count; i++)
             {
-                new NavGroup { Name = "首页", Labels = new string[0], Keys = new[] { "home:dashboard" } },
-                new NavGroup { Name = "下载", Labels = new[] { "原版游戏", "模组", "数据包", "资源包", "光影包", "整合包" },
-                    Keys = new[] { "download:install", "download:mod", "download:datapack", "download:resourcepack", "download:shader", "download:pack" } },
-                new NavGroup { Name = "联机", Labels = new[] { "一键开服", "联机大厅", "服务器列表" },
-                    Keys = new[] { "server:oneclick", "server:hall", "server:list" } },
-                new NavGroup { Name = "账号", Labels = new string[0], Keys = new[] { "account:home" } },
-                new NavGroup { Name = "设置", Labels = new[] { "游戏设置", "启动器设置" },
-                    Keys = new[] { "settings:game", "settings:launcher" } },
-                new NavGroup { Name = "更多", Labels = new[] { "找乐子", "工具", "关于" },
-                    Keys = new[] { "more:fun", "more:tools", "more:about" } },
-            };
+                string k = order[i];
+                var it = NavCatalog.Find(k);
+                if (it == null) continue;
+                list.Add(new NavGroup
+                {
+                    Key = k,
+                    Name = it.Name,
+                    Icon = it.Icon,
+                    Hidden = hidden.Contains(k),
+                    Labels = NavLabels(k),
+                    Keys = NavKeys(k)
+                });
+            }
+            navGroups = list.ToArray();
         }
 
+        static string[] NavLabels(string key)
+        {
+            if (key == "download") return new[] { "原版游戏", "模组", "数据包", "资源包", "光影包", "整合包" };
+            if (key == "multi") return new[] { "一键开服", "联机大厅", "服务器列表" };
+            if (key == "settings") return new[] { "游戏设置", "启动器设置" };
+            if (key == "more") return new[] { "找乐子", "工具", "关于" };
+            return new string[0];
+        }
+
+        static string[] NavKeys(string key)
+        {
+            if (key == "home") return new[] { "home:dashboard" };
+            if (key == "download") return new[] { "download:install", "download:mod", "download:datapack", "download:resourcepack", "download:shader", "download:pack" };
+            if (key == "multi") return new[] { "server:oneclick", "server:hall", "server:list" };
+            if (key == "account") return new[] { "account:home" };
+            if (key == "settings") return new[] { "settings:game", "settings:launcher" };
+            if (key == "more") return new[] { "more:fun", "more:tools", "more:about" };
+            return new string[] { "home:dashboard" };
+        }
+
+        // 偷看：被删掉的导航项临时显示（按下时露出，松开消失）
+        void ApplyNavPeek()
+        {
+            if (railItems == null || navGroups == null) return;
+            for (int i = 0; i < railItems.Length && i < navGroups.Length; i++)
+            {
+                var item = railItems[i];
+                if (item == null) continue;
+                item.Visibility = (navPeek || !navGroups[i].Hidden) ? Visibility.Visible : Visibility.Collapsed;
+            }
+        }
+
+        // 启动落地页 = 第一个没被隐藏的导航项（用户可以在设置里调整顺序）
+        string FirstNavKey()
+        {
+            if (navGroups != null)
+                for (int i = 0; i < navGroups.Length; i++)
+                {
+                    var g = navGroups[i];
+                    if (g != null && !g.Hidden && g.Keys != null && g.Keys.Length > 0) return g.Keys[0];
+                }
+            return "home:dashboard";
+        }
         UIElement BuildBrandHeader()
         {
             var bar = new Grid();
@@ -995,21 +1068,6 @@ namespace HugeLauncher.Ui
             var stack = new StackPanel();
             stack.VerticalAlignment = VerticalAlignment.Top;
             stack.Margin = new Thickness(0, 6, 0, 0);
-            string[] icons = new string[]
-            {
-                // 0 首页
-                "M3.5 10.5 L12 3.5 L20.5 10.5 M6 8.8 L6 20 L18 20 L18 8.8 M10 20 L10 14 L14 14 L14 20",
-                // 1 下载
-                "M12 3 L12 15 M7 10 L12 15 L17 10 M4 20 L20 20",
-                // 2 联机
-                "M8 11 A4 4 0 1 0 8 3 A4 4 0 1 0 8 11 M2 21 L2 19 A6 6 0 0 1 14 19 L14 21 M16 4 A4 4 0 0 1 16 12 M22 21 L22 19 A6 6 0 0 0 18 13",
-                // 3 账号
-                "M12 12 A4 4 0 1 0 12 4 A4 4 0 1 0 12 12 M4 21 L4 19 A4 4 0 0 1 8 15 L16 15 A4 4 0 0 1 20 19 L20 21",
-                // 4 设置
-                "M12 2 L14.5 4 L17.5 3.5 L18.5 6.5 L21.5 7.5 L21 10.5 L22 12 L21 13.5 L21.5 16.5 L18.5 17.5 L17.5 20.5 L14.5 20 L12 22 L9.5 20 L6.5 20.5 L5.5 17.5 L2.5 16.5 L3 13.5 L2 12 L3 10.5 L2.5 7.5 L5.5 6.5 L6.5 3.5 L9.5 4 Z M12 8 A4 4 0 1 0 12 16 A4 4 0 1 0 12 8",
-                // 5 更多
-                "M6 11 L6 13 M12 11 L12 13 M18 11 L18 13"
-            };
             railLabels = new TextBlock[navGroups.Length];
             railIcons = new Path[navGroups.Length];
             railPill = new Border();
@@ -1044,7 +1102,7 @@ namespace HugeLauncher.Ui
                 box.VerticalAlignment = VerticalAlignment.Center;
                 box.IsHitTestVisible = false;           // 点击统一交给 item
                 var p = new Path();
-                p.Data = Geometry.Parse(icons[i]);
+                p.Data = Geometry.Parse(navGroups[i].Icon);
                 p.Stroke = Palette.B(Palette.Dim);
                 p.StrokeThickness = 1.6;
                 p.StrokeStartLineCap = PenLineCap.Round;
@@ -1063,6 +1121,9 @@ namespace HugeLauncher.Ui
                 railLabels[i] = lb;
                 box.Children.Add(lb);
                 item.Children.Add(box);
+                if (navGroups[i].Hidden) item.Visibility = Visibility.Collapsed;
+                if (railItems == null || railItems.Length != navGroups.Length) railItems = new Grid[navGroups.Length];
+                railItems[i] = item;
                 item.MouseLeftButtonUp += delegate
                 {
                     SelectGroupVertical(gi, 0);
@@ -1184,7 +1245,18 @@ namespace HugeLauncher.Ui
             if (railPill == null) return;
             if (idx < 0) { railPill.Visibility = Visibility.Collapsed; return; }
             railPill.Visibility = Visibility.Visible;
-            double y = idx * 56.0;
+            // 隐藏的导航项是 Collapsed（不占高度），所以指示框要按「实际可见的第几个」算，
+            // 不能直接用分组下标，否则删掉前面的项后指示框会偏一格。
+            int visibleBefore = 0;
+            for (int i = 0; i < idx && i < navGroups.Length; i++)
+            {
+                if (railItems != null && i < railItems.Length && railItems[i] != null)
+                {
+                    if (railItems[i].Visibility == Visibility.Visible) visibleBefore++;
+                }
+                else if (!navGroups[i].Hidden) visibleBefore++;
+            }
+            double y = visibleBefore * 56.0;
             if (!railPillInit)
             {
                 railPillSpring.SnapTo(y);
@@ -1698,45 +1770,7 @@ namespace HugeLauncher.Ui
             g.RowDefinitions.Add(UiHelpers.AutoRow());
             g.RowDefinitions.Add(UiHelpers.StarRow());
 
-            navGroups = new[]
-            {
-                new NavGroup
-                {
-                    Name = "首页",
-                    Labels = new string[0],
-                    Keys = new[] { "home:dashboard" }
-                },
-                new NavGroup
-                {
-                    Name = "下载",
-                    Labels = new[] { "原版游戏", "模组", "数据包", "资源包", "光影包", "整合包" },
-                    Keys = new[] { "download:install", "download:mod", "download:datapack", "download:resourcepack", "download:shader", "download:pack" }
-                },
-                new NavGroup
-                {
-                    Name = "联机",
-                    Labels = new[] { "一键开服", "联机大厅", "服务器列表" },
-                    Keys = new[] { "server:oneclick", "server:hall", "server:list" }
-                },
-                new NavGroup
-                {
-                    Name = "账号",
-                    Labels = new string[0],   // 无二级项：页内三栏自给自足，二级栏整列隐藏
-                    Keys = new[] { "account:home" }
-                },
-                new NavGroup
-                {
-                    Name = "设置",
-                    Labels = new[] { "游戏设置", "启动器设置" },
-                    Keys = new[] { "settings:game", "settings:launcher" }
-                },
-                new NavGroup
-                {
-                    Name = "更多",
-                    Labels = new[] { "找乐子", "工具", "关于" },
-                    Keys = new[] { "more:fun", "more:tools", "more:about" }
-                },
-            };
+            InitNavGroups();
 
             // 一级标签行：固定宽度单元 + 底部滑动指示条（单元宽 72，指示条宽 30，居中偏移 21）
             var topRow = new Grid();
@@ -2597,7 +2631,7 @@ namespace HugeLauncher.Ui
         {
             RefreshVersionText();
             string startPage = Environment.GetEnvironmentVariable("HIL_START_PAGE");
-            Navigate(string.IsNullOrEmpty(startPage) ? "home:dashboard" : startPage);
+            Navigate(string.IsNullOrEmpty(startPage) ? FirstNavKey() : startPage);
             FloatBall.Sync(cfg);   // 启动=全窗模式，不出球；注册配置备用
             // 液态玻璃活底：启动逐帧对齐循环（幂等；不再需要截屏/去抖/排除注册）
             Glass.Init(rootBorder);

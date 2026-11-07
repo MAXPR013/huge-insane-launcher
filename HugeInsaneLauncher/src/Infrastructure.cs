@@ -171,7 +171,9 @@ namespace HugeLauncher
         public List<string> RecentServers = new List<string>();    // 最近碰过的服务器地址（首页小部件用）
         public string VersionId = "";
         public bool ShowSnapshots = false;
-        public string CollapsedGroups = "";     // 下载页折叠状态（release,snapshot,fool,old 逗号分隔。
+        public string NavOrder = "";          // 左侧导航顺序（逗号分隔 key；空=默认）
+        public string NavHidden = "";         // 被删掉的导航项（逗号分隔 key）
+        public string CollapsedGroups = "";     // 下载页折叠状态（release,snapshot,fool,old 逗号分隔）
         public bool Onboarded = false;          // 新手引导是否已完。
         public int OnboardStep = 0;             // 引导断点（中途关掉下次接着看）
         public int MemoryMb = 2048;
@@ -262,6 +264,8 @@ namespace HugeLauncher
                             break;
                         case "VersionId": c.VersionId = v; break;
                         case "ShowSnapshots": c.ShowSnapshots = (v == "1"); break;
+                        case "NavOrder": c.NavOrder = v; break;
+                        case "NavHidden": c.NavHidden = v; break;
                         case "CollapsedGroups": c.CollapsedGroups = v; break;
                         case "Onboarded": c.Onboarded = (v == "1"); break;
                         case "OnboardStep": if (int.TryParse(v, out n)) c.OnboardStep = n; break;
@@ -318,6 +322,8 @@ namespace HugeLauncher
                     "RecentServers=" + JoinCsv(RecentServers),
                     "VersionId=" + VersionId,
                     "ShowSnapshots=" + (ShowSnapshots ? "1" : "0"),
+                    "NavOrder=" + (NavOrder ?? ""),
+                    "NavHidden=" + (NavHidden ?? ""),
                     "CollapsedGroups=" + (CollapsedGroups ?? ""),
                     "Onboarded=" + (Onboarded ? "1" : "0"),
                     "OnboardStep=" + OnboardStep,

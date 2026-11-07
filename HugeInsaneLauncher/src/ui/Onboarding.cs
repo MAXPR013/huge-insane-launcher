@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using HugeLauncher;
@@ -14,7 +15,7 @@ namespace HugeLauncher.Ui
 {
     static class Onboarding
     {
-        public const int Steps = 5;
+        public const int Steps = 7;
 
         // go(step) 切步；finish() 标记完成；openMigrate()/openDownload() 跳到对应页
         public static UIElement Build(Config cfg, int step, Action<int> go, Action finish,
@@ -111,8 +112,16 @@ namespace HugeLauncher.Ui
             next.SetColors(ThemeManager.CurrentColor, Palette.Lighten(ThemeManager.CurrentColor, 0.12), Palette.Dark, Palette.Dark);
             next.Click += delegate
             {
-                if (step == Steps - 1) finish();
-                else go(step + 1);
+                if (step == Steps - 1) { finish(); return; }
+                // 导航那一步：先落到下一步再重建界面，让新导航立刻生效且引导停在第 4 步
+                if (step == 2)
+                {
+                    cfg.OnboardStep = 3;
+                    try { cfg.Save(); } catch { }
+                    HugeLauncher.Ui.Pages.PageBase.RequestNavRefresh();
+                    return;
+                }
+                go(step + 1);
             };
             nav.Children.Add(next);
             foot.Children.Add(nav);
@@ -120,9 +129,11 @@ namespace HugeLauncher.Ui
             switch (step)
             {
                 case 0: BuildWelcome(cfg, body); break;
-                case 1: BuildWhereIsGame(body, openMigrate); break;
-                case 2: BuildInstall(body, openDownload); break;
-                case 3: BuildLogin(cfg, body, go); break;
+                case 1: BuildLayoutChoice(cfg, body); break;
+                case 2: BuildNavChoice(cfg, body); break;
+                case 3: BuildWhereIsGame(body, openMigrate); break;
+                case 4: BuildInstall(body, openDownload); break;
+                case 5: BuildLogin(cfg, body, go); break;
                 default: BuildDone(body); break;
             }
             return layer;
@@ -181,34 +192,219 @@ namespace HugeLauncher.Ui
             }
             body.Children.Add(row);
 
-            var row2 = new StackPanel();
-            row2.Orientation = Orientation.Horizontal;
-            row2.Margin = new Thickness(0, 10, 0, 0);
-            string[] layouts = { "classic", "vertical" };
-            string[] lnames = { "经典横排", "纵向舞台" };
-            for (int i = 0; i < layouts.Length; i++)
-            {
-                string ly = layouts[i];
-                var b = new FlatButton(lnames[i]);
-                b.SetFontSize(12);
-                b.SetPadding(new Thickness(16, 6, 16, 6));
-                b.SetCornerRadius(new CornerRadius(7));
-                b.Margin = new Thickness(0, 0, 8, 0);
-                bool on = cfg.Layout == ly;
-                b.SetColors(on ? ThemeManager.CurrentColor : Color.FromArgb(0, 0, 0, 0),
-                            on ? Palette.Lighten(ThemeManager.CurrentColor, 0.12) : Color.FromArgb(26, 255, 255, 255),
-                            on ? Palette.Dark : Palette.Text, Palette.Text);
-                b.Click += delegate
-                {
-                    cfg.Layout = ly;
-                    try { cfg.Save(); } catch { }
-                    ThemeManager.ApplyLayout(ly);
-                };
-                row2.Children.Add(b);
-            }
-            body.Children.Add(row2);
+
         }
 
+        // ===== 第 3 步：挑导航 =====
+        static void BuildNavChoice(Config cfg, StackPanel body)
+        {
+            Title(body, "挑几个常用的入口");
+            Desc(body, "拖动 ≡ 排序，× 去掉不用的（按住 Shift+S 可以随时偷看被去掉的项）。之后在「设置 → 导航」里也能改。");
+
+            var order = NavCatalog.OrderFrom(cfg);
+            var hidden = NavCatalog.HiddenFrom(cfg);
+
+            var head = new Grid();
+            head.Margin = new Thickness(0, 12, 0, 6);
+            head.ColumnDefinitions.Add(UiHelpers.StarCol());
+            head.ColumnDefinitions.Add(UiHelpers.AutoCol());
+            var tip = new TextBlock();
+            tip.Text = "当前导航";
+            tip.FontSize = 11;
+            tip.VerticalAlignment = VerticalAlignment.Center;
+            tip.Foreground = Palette.B(Palette.Dim);
+            head.Children.Add(tip);
+
+            var add = new FlatButton("＋");
+            add.SetFontSize(12);
+            add.SetPadding(new Thickness(9, 1, 9, 2));
+            add.SetCornerRadius(new CornerRadius(5));
+            add.SetColors(Color.FromArgb(0, 0, 0, 0), Color.FromArgb(26, 255, 255, 255), Palette.Dim, Palette.Text);
+            Grid.SetColumn(add, 1);
+            head.Children.Add(add);
+            body.Children.Add(head);
+
+            var list = new StackPanel();
+            body.Children.Add(list);
+
+            NavListEditor editor = null;
+            editor = new NavListEditor(list, order, hidden,
+                delegate { NavCatalog.Save(cfg, order, hidden); },
+                delegate { if (editor != null) editor.BuildRows(); });
+            editor.BuildRows();
+
+            add.Click += delegate
+            {
+                var pop = new Popup();
+                pop.PlacementTarget = add;
+                pop.Placement = PlacementMode.Bottom;
+                pop.StaysOpen = false;
+                pop.AllowsTransparency = true;
+                var panel = new Border();
+                panel.Background = Palette.B(Palette.Panel);
+                panel.BorderBrush = Palette.B(Palette.Line);
+                panel.BorderThickness = new Thickness(1);
+                panel.CornerRadius = new CornerRadius(10);
+                panel.Padding = new Thickness(8);
+                panel.MinWidth = 140;
+                panel.Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 18, ShadowDepth = 2, Opacity = 0.35 };
+                var col = new StackPanel();
+                panel.Child = col;
+                var cap = new TextBlock();
+                cap.Text = "添加导航";
+                cap.FontSize = 11;
+                cap.Foreground = Palette.B(Palette.Dim);
+                cap.Margin = new Thickness(4, 0, 0, 6);
+                col.Children.Add(cap);
+                bool any = false;
+                for (int i = 0; i < NavCatalog.All.Count; i++)
+                {
+                    var it = NavCatalog.All[i];
+                    if (!hidden.Contains(it.Key)) continue;
+                    any = true;
+                    string k = it.Key;
+                    var b = new FlatButton(it.Name);
+                    b.SetFontSize(12);
+                    b.SetPadding(new Thickness(10, 4, 10, 4));
+                    b.SetCornerRadius(new CornerRadius(6));
+                    b.HorizontalAlignment = HorizontalAlignment.Stretch;
+                    b.Margin = new Thickness(0, 0, 0, 3);
+                    b.SetColors(Color.FromArgb(0, 0, 0, 0), Color.FromArgb(30, 255, 255, 255), Palette.Text, Palette.Text);
+                    b.Click += delegate
+                    {
+                        hidden.Remove(k);
+                        if (!order.Contains(k)) order.Add(k);
+                        NavCatalog.Save(cfg, order, hidden);
+                        editor.BuildRows();
+                        pop.IsOpen = false;
+                    };
+                    col.Children.Add(b);
+                }
+                if (!any)
+                {
+                    var empty = new TextBlock();
+                    empty.Text = "没有可添加的项";
+                    empty.FontSize = 12;
+                    empty.Margin = new Thickness(4, 2, 4, 2);
+                    empty.Foreground = Palette.B(Palette.Dim);
+                    col.Children.Add(empty);
+                }
+                pop.Child = panel;
+                pop.IsOpen = true;
+            };
+        }
+        // ===== 第 2 步：选布局 =====
+        static void BuildLayoutChoice(Config cfg, StackPanel body)
+        {
+            Title(body, "选一个你喜欢的布局");
+            Desc(body, "之后随时可以在「设置 → 启动器设置 → 外观」里改。点一下马上生效。");
+
+            var row = new StackPanel();
+            row.Orientation = Orientation.Horizontal;
+            row.Margin = new Thickness(0, 16, 0, 0);
+            body.Children.Add(row);
+
+            AddLayoutCard(row, cfg, "vertical", "纵向舞台", "左侧图标导航 + 史蒂夫看板，右侧放内容");
+            AddLayoutCard(row, cfg, "classic", "经典横排", "顶部标签导航，横向铺开，信息密度更大");
+        }
+
+        static void AddLayoutCard(StackPanel row, Config cfg, string value, string name, string desc)
+        {
+            bool on = cfg.Layout == value;
+            var card = new Border();
+            card.Width = 132;
+            card.Margin = new Thickness(0, 0, 12, 0);
+            card.CornerRadius = new CornerRadius(10);
+            card.Padding = new Thickness(12);
+            card.Cursor = Cursors.Hand;
+            card.BorderThickness = new Thickness(on ? 2 : 1);
+            card.BorderBrush = Palette.B(on ? ThemeManager.CurrentColor : Palette.Line);
+            card.Background = Palette.B(Palette.Tile);
+
+            var sp = new StackPanel();
+            sp.Children.Add(MakePreview(value, on));
+            var t = new TextBlock();
+            t.Text = name;
+            t.FontSize = 13;
+            t.FontWeight = FontWeights.SemiBold;
+            t.Margin = new Thickness(0, 10, 0, 3);
+            t.Foreground = Palette.B(Palette.Text);
+            sp.Children.Add(t);
+            var d = new TextBlock();
+            d.Text = desc;
+            d.FontSize = 11;
+            d.TextWrapping = TextWrapping.Wrap;
+            d.Foreground = Palette.B(Palette.Dim);
+            sp.Children.Add(d);
+            card.Child = sp;
+
+            card.MouseLeftButtonUp += delegate
+            {
+                if (cfg.Layout == value) return;
+                cfg.Layout = value;
+                cfg.Save();
+                ThemeManager.ApplyLayout(value);
+            };
+            row.Children.Add(card);
+        }
+
+        static UIElement MakePreview(string value, bool on)
+        {
+            var g = new Grid();
+            g.Height = 64;
+            g.ClipToBounds = true;
+            var bg = new Border();
+            bg.CornerRadius = new CornerRadius(6);
+            bg.Background = Palette.B(Palette.Line);
+            bg.Opacity = 0.35;
+            g.Children.Add(bg);
+            Color accent = on ? ThemeManager.CurrentColor : Palette.Dim;
+            if (value == "vertical")
+            {
+                var left = new Border();
+                left.Width = 14;
+                left.HorizontalAlignment = HorizontalAlignment.Left;
+                left.Margin = new Thickness(6, 6, 0, 6);
+                left.CornerRadius = new CornerRadius(3);
+                left.Background = Palette.B(accent);
+                left.Opacity = 0.75;
+                g.Children.Add(left);
+                for (int i = 0; i < 3; i++)
+                {
+                    var b = new Border();
+                    b.Height = 14;
+                    b.Margin = new Thickness(28, 6 + i * 18, 6, 0);
+                    b.VerticalAlignment = VerticalAlignment.Top;
+                    b.CornerRadius = new CornerRadius(3);
+                    b.Background = Palette.B(accent);
+                    b.Opacity = 0.25;
+                    g.Children.Add(b);
+                }
+            }
+            else
+            {
+                for (int i = 0; i < 4; i++)
+                {
+                    var b = new Border();
+                    b.Width = 18;
+                    b.Height = 8;
+                    b.Margin = new Thickness(8 + i * 24, 8, 0, 0);
+                    b.HorizontalAlignment = HorizontalAlignment.Left;
+                    b.VerticalAlignment = VerticalAlignment.Top;
+                    b.CornerRadius = new CornerRadius(3);
+                    b.Background = Palette.B(accent);
+                    b.Opacity = 0.65;
+                    g.Children.Add(b);
+                }
+                var bodyB = new Border();
+                bodyB.Margin = new Thickness(8, 24, 8, 8);
+                bodyB.CornerRadius = new CornerRadius(4);
+                bodyB.Background = Palette.B(accent);
+                bodyB.Opacity = 0.22;
+                g.Children.Add(bodyB);
+            }
+            return g;
+        }
         // ===== 第 2 步：游戏在哪（扫描其他启动器） =====
         static void BuildWhereIsGame(StackPanel body, Action openMigrate)
         {

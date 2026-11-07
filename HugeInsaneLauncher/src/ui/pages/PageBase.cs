@@ -28,6 +28,9 @@ namespace HugeLauncher.Ui.Pages
         public static void NotifyVersionSelected() { var h = VersionSelectHandler; if (h != null) h(); }
 
         // 重新查看新手引导（主窗口实现）
+        // 导航布局被改过：主窗口重建成新的导航栏
+        public static Action NavRefreshHandler;
+        public static void RequestNavRefresh() { var h = NavRefreshHandler; if (h != null) h(); }
         public static Action RestartOnboardHandler;
         public static void RequestRestartOnboard() { var h = RestartOnboardHandler; if (h != null) h(); }
 

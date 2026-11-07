@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
@@ -106,6 +107,14 @@ namespace HugeLauncher.Ui
             scroll.Content = stack;
             Content = scroll;
             scroll.ScrollChanged += delegate { StickyHeaders.Update(scroll, sticky); };
+            // 调试：HIL_SETTINGS_BOTTOM=1 打开就滚到底（离屏截图验收用）
+            if (Environment.GetEnvironmentVariable("HIL_SETTINGS_BOTTOM") == "1")
+                Dispatcher.BeginInvoke(new Action(delegate { scroll.ScrollToEnd(); }), System.Windows.Threading.DispatcherPriority.Background);
+            string scrollEnv = Environment.GetEnvironmentVariable("HIL_SETTINGS_SCROLL");
+            double scrollTo;
+            if (!string.IsNullOrEmpty(scrollEnv) && double.TryParse(scrollEnv, out scrollTo))
+                Dispatcher.BeginInvoke(new Action(delegate { scroll.ScrollToVerticalOffset(scrollTo); }), System.Windows.Threading.DispatcherPriority.Background);
+
             scroll.SizeChanged += delegate { StickyHeaders.Update(scroll, sticky); };
             IsVisibleChanged += delegate { if (IsVisible) StickyHeaders.Update(scroll, sticky); };
         }
@@ -525,6 +534,141 @@ namespace HugeLauncher.Ui
                         ((System.Windows.Media.Effects.BlurEffect)Slime.Current.Effect).Radius = v;   // 即时生效，不重建
                 });
 
+            // ===== 瓷砖二：导航（顺序 / 显隐；按住 Shift+S 临时查看被移除的项） =====
+            var tileNav = AddTile("导航");
+            var navOrder = NavCatalog.OrderFrom(cfg);
+            var navHidden = NavCatalog.HiddenFrom(cfg);
+            bool navDirty = false;
+
+            var navHead = new Grid();
+            navHead.ColumnDefinitions.Add(UiHelpers.StarCol());
+            navHead.ColumnDefinitions.Add(UiHelpers.AutoCol());
+            navHead.ColumnDefinitions.Add(UiHelpers.AutoCol());
+            var navHint = new TextBlock();
+            navHint.Text = "拖动 ≡ 排序，× 移除；按住 Shift+S 可以临时看到被移除的项";
+            navHint.FontSize = 11;
+            navHint.TextWrapping = TextWrapping.Wrap;
+            navHint.Margin = new Thickness(0, 0, 8, 0);
+            navHint.VerticalAlignment = VerticalAlignment.Center;
+            navHint.Foreground = Palette.B(Palette.Dim);
+            navHead.Children.Add(navHint);
+
+            var navApply = new FlatButton("✓");
+            navApply.SetFontSize(12);
+            navApply.SetPadding(new Thickness(9, 2, 9, 2));
+            navApply.SetCornerRadius(new CornerRadius(5));
+            navApply.SetColors(Color.FromArgb(0, 0, 0, 0), Color.FromArgb(26, 255, 255, 255), Palette.Dim, Palette.Text);
+            navApply.Visibility = Visibility.Collapsed;
+            navApply.ToolTip = "应用导航布局";
+            Grid.SetColumn(navApply, 1);
+            navHead.Children.Add(navApply);
+
+            var navAdd = new FlatButton("＋");
+            navAdd.SetFontSize(13);
+            navAdd.SetPadding(new Thickness(9, 1, 9, 2));
+            navAdd.SetCornerRadius(new CornerRadius(5));
+            navAdd.SetColors(Color.FromArgb(0, 0, 0, 0), Color.FromArgb(26, 255, 255, 255), Palette.Dim, Palette.Text);
+            navAdd.Margin = new Thickness(6, 0, 0, 0);
+            navAdd.ToolTip = "添加导航项";
+            Grid.SetColumn(navAdd, 2);
+            navHead.Children.Add(navAdd);
+            tileNav.Children.Add(navHead);
+
+            var navList = new StackPanel();
+            navList.Margin = new Thickness(0, 8, 0, 0);
+            tileNav.Children.Add(navList);
+
+            Action markDirty = delegate
+            {
+                navDirty = true;
+                navApply.Visibility = Visibility.Visible;
+            };
+
+            // 当前可见项（按 navOrder 顺序、去掉 hidden）
+            Func<List<string>> visibleKeys = delegate
+            {
+                var list = new List<string>();
+                for (int i = 0; i < navOrder.Count; i++)
+                    if (!navHidden.Contains(navOrder[i])) list.Add(navOrder[i]);
+                if (list.Count == 0 && NavCatalog.All.Count > 0) list.Add(NavCatalog.All[0].Key);
+                return list;
+            };
+
+            NavListEditor navEditor = null;
+            navEditor = new NavListEditor(navList, navOrder, navHidden, markDirty, delegate { navEditor.BuildRows(); });
+            navEditor.BuildRows();
+
+            navAdd.Click += delegate
+            {
+                var pop = new Popup();
+                pop.PlacementTarget = navAdd;
+                pop.Placement = PlacementMode.Bottom;
+                pop.StaysOpen = false;
+                pop.AllowsTransparency = true;
+
+                var panel = new Border();
+                panel.Background = Palette.B(Palette.Panel);
+                panel.BorderBrush = Palette.B(Palette.Line);
+                panel.BorderThickness = new Thickness(1);
+                panel.CornerRadius = new CornerRadius(10);
+                panel.Padding = new Thickness(8);
+                panel.MinWidth = 140;
+                panel.Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 18, ShadowDepth = 2, Opacity = 0.35 };
+                var col = new StackPanel();
+                panel.Child = col;
+
+                var cap = new TextBlock();
+                cap.Text = "添加导航";
+                cap.FontSize = 11;
+                cap.Foreground = Palette.B(Palette.Dim);
+                cap.Margin = new Thickness(4, 0, 0, 6);
+                col.Children.Add(cap);
+
+                bool any = false;
+                for (int i = 0; i < NavCatalog.All.Count; i++)
+                {
+                    var it = NavCatalog.All[i];
+                    if (!navHidden.Contains(it.Key)) continue;
+                    any = true;
+                    string k = it.Key;
+                    var b = new FlatButton(it.Name);
+                    b.SetFontSize(12);
+                    b.SetPadding(new Thickness(10, 4, 10, 4));
+                    b.SetCornerRadius(new CornerRadius(6));
+                    b.HorizontalAlignment = HorizontalAlignment.Stretch;
+                    b.Margin = new Thickness(0, 0, 0, 3);
+                    b.SetColors(Color.FromArgb(0, 0, 0, 0), Color.FromArgb(30, 255, 255, 255), Palette.Text, Palette.Text);
+                    b.Click += delegate
+                    {
+                        navHidden.Remove(k);
+                        if (!navOrder.Contains(k)) navOrder.Add(k);
+                        markDirty();
+                        navEditor.BuildRows();
+                        pop.IsOpen = false;
+                    };
+                    col.Children.Add(b);
+                }
+                if (!any)
+                {
+                    var empty = new TextBlock();
+                    empty.Text = "没有可添加的项";
+                    empty.FontSize = 12;
+                    empty.Margin = new Thickness(4, 2, 4, 2);
+                    empty.Foreground = Palette.B(Palette.Dim);
+                    col.Children.Add(empty);
+                }
+
+                pop.Child = panel;
+                pop.IsOpen = true;
+            };
+            navApply.Click += delegate
+            {
+                if (!navDirty) return;
+                NavCatalog.Save(cfg, navOrder, navHidden);
+                navApply.Visibility = Visibility.Collapsed;
+                navDirty = false;
+                PageBase.RequestNavRefresh();
+            };
             // ===== 瓷砖二：悬浮球（主窗最小化或游戏运行时的桌面简化面板） =====
             var tileBall = AddTile("悬浮球", "setup:floatball");
             var chkBall = AddCheckRow(tileBall, "", cfg.FloatBallOn);
