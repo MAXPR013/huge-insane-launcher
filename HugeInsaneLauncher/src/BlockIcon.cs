@@ -44,6 +44,14 @@ namespace HugeLauncher
             bool result = false;
             try
             {
+                // 先看有没有预渲染好的 3D 图标（内嵌 blocks3d.zip 首次运行释放）。
+                // 有了它，就算这台机器没有 .minecraft / 没有 jar，也能显示 3D。
+                string pre = Path.Combine(Paths.LauncherDir, "Images", "Blocks3D", id + ".png");
+                if (File.Exists(pre))
+                {
+                    isBlockCache[id] = true;
+                    return true;
+                }
                 var z = Jar;
                 if (z != null)
                 {
