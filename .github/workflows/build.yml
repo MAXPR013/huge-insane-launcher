@@ -37,6 +37,8 @@ jobs:
             HugeInsaneLauncher.exe
             HugeInsaneLauncher_*.cs
           if-no-files-found: error
+          # 单文件合并只在打 tag 时生成，普通 push 没有 HugeInsaneLauncher_*.cs
+          # （v4 的 if-no-files-found 是“所有 path 都没有”才报错，这里 exe 一定存在，安全）
 
       - name: 发布 Release（仅打 tag 时）
         if: startsWith(github.ref, 'refs/tags/v')
