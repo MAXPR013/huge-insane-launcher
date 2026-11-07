@@ -31,6 +31,10 @@ namespace HugeLauncher.Ui.Pages
 
         public PageServerLobby()
         {
+            LobbyServerCard.CopiedHandler = delegate(string addr)
+            {
+                if (Cfg != null) Cfg.PushRecentServer(addr);
+            };
             RowDefinitions.Add(UiHelpers.AutoRow()); // 搜索框
             RowDefinitions.Add(UiHelpers.AutoRow()); // 分类按钮
             RowDefinitions.Add(UiHelpers.AutoRow()); // 置顶卡
@@ -270,6 +274,7 @@ namespace HugeLauncher.Ui.Pages
     // 服务器状态卡：图标 + 名称/地址/复制 + 中文介绍 + 右侧实时状态区
     class LobbyServerCard : Border
     {
+        public static Action<string> CopiedHandler;   // 复制地址后的回调（页面用来记「最近服务器」）
         readonly ServerEntry entry;
         readonly string aniKey;
         Image iconImage;
@@ -509,6 +514,8 @@ namespace HugeLauncher.Ui.Pages
         {
             try { Clipboard.SetText(entry.Address); }
             catch { PageBase.Toast("复制失败"); return; }
+            var copied = CopiedHandler;
+            if (copied != null) copied(entry.Address);
             copyBtn.Text = "已复制";
             copyTimer.Stop();
             copyTimer.Start();

@@ -32,7 +32,6 @@ namespace HugeLauncher.Ui.Pages
         int _buildSeq;      // 构建代次：重建时自增，作废旧的分批构建任务
         List<GameCore.VersionEntry> _versions = new List<GameCore.VersionEntry>();
         HashSet<string> _installed = new HashSet<string>();
-        MiniCheckBox _chkSnapshots;
 
         // ---------- 安装确认视图状态 ----------
         GameCore.VersionEntry _selected;
@@ -229,21 +228,6 @@ namespace HugeLauncher.Ui.Pages
             var right = new StackPanel();
             right.Orientation = Orientation.Horizontal;
             right.VerticalAlignment = VerticalAlignment.Center;
-            _chkSnapshots = new MiniCheckBox();
-            _chkSnapshots.VerticalAlignment = VerticalAlignment.Center;
-            _chkSnapshots.Changed += delegate
-            {
-                if (Cfg != null)
-                {
-                    Cfg.ShowSnapshots = _chkSnapshots.IsChecked;
-                    try { Cfg.Save(); } catch { }
-                }
-                if (_versionsLoaded) BuildVersionCards();
-            };
-            right.Children.Add(_chkSnapshots);
-            var lbl = MakeText("显示快照版", 12, Palette.Dim, false);
-            lbl.Margin = new Thickness(6, 0, 14, 0);
-            right.Children.Add(lbl);
             var btnRefresh = new FlatButton("刷新");
             btnRefresh.SetPadding(new Thickness(14, 5, 14, 5));
             btnRefresh.Click += delegate
@@ -272,20 +256,15 @@ namespace HugeLauncher.Ui.Pages
             catch { }
         }
 
-        // 只刷「已安装/点击下载」标记：遍历已建行改文本/可见性，不重建卡片（进页开销≈0）
+        // 已安装状态只刷悬停提示，不重建卡片（进页开销≈0）
         void RefreshInstalledTags()
         {
             foreach (var kv in _rowByVersion)
-            {
-                var tag = kv.Value.Tag as TextBlock;
-                if (tag != null) ApplyInstalledState(kv.Value, tag, _installed.Contains(kv.Key));
-            }
+                ApplyInstalledState(kv.Value, _installed.Contains(kv.Key));
         }
 
-        static void ApplyInstalledState(Border row, TextBlock tag, bool installed)
+        static void ApplyInstalledState(Border row, bool installed)
         {
-            tag.Text = installed ? "已安装" : "点击下载";
-            tag.Visibility = installed ? Visibility.Visible : Visibility.Hidden;
             row.ToolTip = installed ? "已安装，点击将再次安装为副本（名称后加 #）" : null;
         }
 
@@ -324,30 +303,114 @@ namespace HugeLauncher.Ui.Pages
             while (_listPanel.Children.Count > 2) _listPanel.Children.RemoveAt(2);
             _rowByVersion.Clear();
             _loadingText.Visibility = Visibility.Collapsed;
-            if (Cfg != null) _chkSnapshots.SetChecked(Cfg.ShowSnapshots, false);
 
             var releases = new List<GameCore.VersionEntry>();
             var snapshots = new List<GameCore.VersionEntry>();
+            var fools = new List<GameCore.VersionEntry>();
             var olds = new List<GameCore.VersionEntry>();
             foreach (var ve in _versions)
             {
                 if (ve.Type == "release") releases.Add(ve);
-                else if (ve.Type == "snapshot") snapshots.Add(ve);
+                else if (ve.Type == "snapshot")
+                {
+                    if (IsAprilFools(ve.Id)) fools.Add(ve);
+                    else snapshots.Add(ve);
+                }
                 else olds.Add(ve);
             }
 
-            bool showExtra = Cfg != null && Cfg.ShowSnapshots;
-            _listPanel.Children.Add(BuildGroupCard("正式版 (" + releases.Count + ")", releases));
-            if (showExtra && snapshots.Count > 0)
-                _listPanel.Children.Add(BuildGroupCard("快照版 (" + snapshots.Count + ")", snapshots));
-            if (showExtra && olds.Count > 0)
-                _listPanel.Children.Add(BuildGroupCard("远古版 (" + olds.Count + ")", olds));
+            _listPanel.Children.Add(BuildLatestCard(releases, snapshots));
+            _listPanel.Children.Add(BuildGroupCard("正式版 (" + releases.Count + ")", "release", releases));
+            if (snapshots.Count > 0) _listPanel.Children.Add(BuildGroupCard("快照版 (" + snapshots.Count + ")", "snapshot", snapshots));
+            if (fools.Count > 0) _listPanel.Children.Add(BuildGroupCard("愚人节版 (" + fools.Count + ")", "fool", fools));
+            if (olds.Count > 0) _listPanel.Children.Add(BuildGroupCard("远古版 (" + olds.Count + ")", "old", olds));
             _cardsBuilt = true;   // 之后进页走 RefreshInstalledTags 捷径
             Dispatcher.BeginInvoke(new Action(delegate { StickyHeaders.Update(_listView, _sticky); }),
                 DispatcherPriority.Background);
         }
 
-        Border BuildGroupCard(string title, List<GameCore.VersionEntry> items)
+        // 愚人节版本：Mojang 的 manifest 只标 snapshot，只能靠 ID 白名单
+        static readonly string[] FoolsIds = new string[]
+        {
+            "15w14a", "1.RV-Pre1", "3D Shareware v1.34", "20w14infinite",
+            "22w13oneBlockAtATime", "23w13a_or_b", "24w14potato", "25w14craftmine"
+        };
+
+        static bool IsAprilFools(string id)
+        {
+            for (int i = 0; i < FoolsIds.Length; i++)
+                if (string.Equals(id, FoolsIds[i], StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        // manifest 的 releaseTime 是 ISO8601，只留日期
+        static string FmtDate(string iso)
+        {
+            if (string.IsNullOrEmpty(iso)) return "";
+            int t = iso.IndexOf('T');
+            if (t > 0) return iso.Substring(0, t);
+            return iso;
+        }
+
+        // 顶部「最新游戏」：上面正式版、下面快照版，整行两格，点击走正常下载流程
+        Border BuildLatestCard(List<GameCore.VersionEntry> releases, List<GameCore.VersionEntry> snapshots)
+        {
+            StackPanel sp;
+            var card = MakeCard(out sp);
+            card.Margin = new Thickness(16, 10, 16, 5);
+            card.Padding = new Thickness(0);
+
+            var title = MakeText("最新游戏", 13, Palette.Text, true);
+            title.Margin = new Thickness(14, 12, 14, 4);
+            sp.Children.Add(title);
+
+            GameCore.VersionEntry latestRelease = releases.Count > 0 ? releases[0] : null;
+            GameCore.VersionEntry latestSnapshot = snapshots.Count > 0 ? snapshots[0] : null;
+            sp.Children.Add(BuildLatestRow("正式版", latestRelease));
+            var sep = new Border();
+            sep.Height = 1;
+            sep.Background = Palette.B(Palette.Line);
+            sep.Margin = new Thickness(14, 0, 14, 0);
+            sep.Opacity = 0.5;
+            sp.Children.Add(sep);
+            sp.Children.Add(BuildLatestRow("快照版", latestSnapshot));
+            return card;
+        }
+
+        UIElement BuildLatestRow(string label, GameCore.VersionEntry ve)
+        {
+            var row = new Border();
+            row.Height = 52;
+            row.CornerRadius = new CornerRadius(6);
+            row.Padding = new Thickness(14, 0, 14, 0);
+            row.Background = Brushes.Transparent;
+            row.Cursor = Cursors.Hand;
+            row.MouseEnter += delegate { row.Background = Palette.B(Palette.BtnHover); };
+            row.MouseLeave += delegate { row.Background = Brushes.Transparent; };
+
+            var g = new Grid();
+            g.ColumnDefinitions.Add(UiHelpers.AutoCol());
+            g.ColumnDefinitions.Add(UiHelpers.StarCol());
+
+            var tag = MakeText(label, 11, Palette.Dim, false);
+            tag.Width = 52;
+            g.Children.Add(tag);
+
+            var mid = new StackPanel();
+            mid.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(mid, 1);
+            var name = MakeText(ve == null ? "暂无" : ve.Id, 14, Palette.Text, true);
+            mid.Children.Add(name);
+            var date = MakeText(ve == null ? "" : FmtDate(ve.ReleaseTime), 11, Palette.Dim, false);
+            mid.Children.Add(date);
+            g.Children.Add(mid);
+
+            row.Child = g;
+            if (ve != null) row.MouseLeftButtonUp += delegate { OpenConfirm(ve); };
+            return row;
+        }
+
+        Border BuildGroupCard(string title, string key, List<GameCore.VersionEntry> items)
         {
             StackPanel sp;
             var card = MakeCard(out sp);
@@ -359,9 +422,20 @@ namespace HugeLauncher.Ui.Pages
             header.Background = null;
             header.BorderThickness = new Thickness(0);
             header.Padding = new Thickness(14, 14, 14, 8);
+            header.Cursor = Cursors.Hand;
+
+            var headGrid = new Grid();
+            headGrid.ColumnDefinitions.Add(UiHelpers.StarCol());
+            headGrid.ColumnDefinitions.Add(UiHelpers.AutoCol());
             var head = MakeText(title, 13, Palette.Text, true);
             head.IsHitTestVisible = false;
-            header.Child = head;
+            headGrid.Children.Add(head);
+            var caret = MakeText("▾", 11, Palette.Dim, false);
+            caret.Margin = new Thickness(8, 0, 0, 0);
+            caret.IsHitTestVisible = false;
+            Grid.SetColumn(caret, 1);
+            headGrid.Children.Add(caret);
+            header.Child = headGrid;
             Panel.SetZIndex(header, 10);
 
             sp.Margin = new Thickness(14, 0, 14, 14);
@@ -374,6 +448,43 @@ namespace HugeLauncher.Ui.Pages
             card.Child = root;
 
             _sticky.Add(StickyHeaders.Attach(_listView, card, header, sp));
+
+            // 折叠：状态记在配置里，下次进页还原
+            bool collapsed = CollapsedContains(key);
+            if (collapsed) sp.Visibility = Visibility.Collapsed;
+            caret.Text = collapsed ? "▸" : "▾";
+            header.MouseLeftButtonUp += delegate
+            {
+                bool nowCollapsed = sp.Visibility == Visibility.Visible;
+                if (nowCollapsed)
+                {
+                    double h = sp.ActualHeight;
+                    if (h <= 1) { sp.Visibility = Visibility.Collapsed; }
+                    else
+                    {
+                        sp.MaxHeight = h;
+                        Ani.Start("grp" + key,
+                            Ani.Aa(delegate(double d) { sp.MaxHeight = Math.Max(0, h + d); }, -h, 150, new AniEaseInFluent(Ani.Weak)),
+                            Ani.AaCode(delegate { sp.Visibility = Visibility.Collapsed; sp.MaxHeight = double.PositiveInfinity; }, 10, false));
+                    }
+                    caret.Text = "▸";
+                }
+                else
+                {
+                    sp.Visibility = Visibility.Visible;
+                    sp.MaxHeight = 0;
+                    sp.Measure(new Size(Math.Max(100, sp.ActualWidth), double.PositiveInfinity));
+                    double h = sp.DesiredSize.Height;
+                    if (h <= 1) h = 400;
+                    Ani.Start("grp" + key,
+                        Ani.Aa(delegate(double d) { sp.MaxHeight = Math.Max(0, d); }, h, 220, new AniEaseOutFluent(Ani.Weak)),
+                        Ani.AaCode(delegate { sp.MaxHeight = double.PositiveInfinity; }, 10, false));
+                    caret.Text = "▾";
+                }
+                SetCollapsed(key, nowCollapsed);
+                Dispatcher.BeginInvoke(new Action(delegate { StickyHeaders.Update(_listView, _sticky); }),
+                    DispatcherPriority.Background);
+            };
 
             // 几百行版本行分批流入：每个调度回合 30 行，狂点标签时输入随时插队
             int seq = _buildSeq;
@@ -391,6 +502,34 @@ namespace HugeLauncher.Ui.Pages
             return card;
         }
 
+        // ---------- 分组折叠状态（存 config.ini） ----------
+        bool CollapsedContains(string key)
+        {
+            if (Cfg == null || string.IsNullOrEmpty(Cfg.CollapsedGroups)) return false;
+            string[] parts = Cfg.CollapsedGroups.Split(',');
+            for (int i = 0; i < parts.Length; i++)
+                if (parts[i].Trim() == key) return true;
+            return false;
+        }
+
+        void SetCollapsed(string key, bool on)
+        {
+            if (Cfg == null) return;
+            var set = new List<string>();
+            if (!string.IsNullOrEmpty(Cfg.CollapsedGroups))
+            {
+                string[] parts = Cfg.CollapsedGroups.Split(',');
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    string p = parts[i].Trim();
+                    if (p.Length > 0 && p != key) set.Add(p);
+                }
+            }
+            if (on) set.Add(key);
+            Cfg.CollapsedGroups = string.Join(",", set.ToArray());
+            try { Cfg.Save(); } catch { }
+        }
+
         UIElement BuildVersionRow(GameCore.VersionEntry ve)
         {
             var row = new Border();
@@ -402,15 +541,8 @@ namespace HugeLauncher.Ui.Pages
             row.MouseLeave += delegate { row.Background = Brushes.Transparent; };
 
             var dock = new DockPanel();
-            // 标记统一建成一份存 row.Tag：已安装常驻「已安装」，未安装悬停才露「点击下载」
-            // （状态变化由 RefreshInstalledTags 就地刷新，不重建行）
-            var tag = MakeText("", 11, Palette.Dim, false);
-            DockPanel.SetDock(tag, Dock.Right);
-            dock.Children.Add(tag);
-            row.MouseEnter += delegate { tag.Visibility = Visibility.Visible; };
-            row.MouseLeave += delegate { if (!_installed.Contains(ve.Id)) tag.Visibility = Visibility.Hidden; };
-            row.Tag = tag;
-            ApplyInstalledState(row, tag, _installed.Contains(ve.Id));
+            // 右侧不再放「下载 / 启动」文字标记：整行本身可点击，状态只体现在悬停提示里
+            ApplyInstalledState(row, _installed.Contains(ve.Id));
 
             var left = new StackPanel();
             left.Orientation = Orientation.Horizontal;

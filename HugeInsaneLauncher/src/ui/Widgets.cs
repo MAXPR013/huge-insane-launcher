@@ -92,6 +92,15 @@ namespace HugeLauncher.Ui
                 Btn = Color.FromArgb(a, Btn.R, Btn.G, Btn.B);
                 BtnHover = Color.FromArgb(a, BtnHover.R, BtnHover.G, BtnHover.B);
             }
+            // 流光玻璃：中层卡片/面板也半透明，透出背后的模糊壁纸，才叫「玻璃」而不是实心色块
+            if (Glass.On && !Frost.On)
+            {
+                byte a = Light ? (byte)196 : (byte)146;
+                Tile = Color.FromArgb(a, Tile.R, Tile.G, Tile.B);
+                Panel = Color.FromArgb((byte)Math.Min(255, a + 24), Panel.R, Panel.G, Panel.B);
+                Btn = Color.FromArgb(a, Btn.R, Btn.G, Btn.B);
+                BtnHover = Color.FromArgb((byte)Math.Min(255, a + 30), BtnHover.R, BtnHover.G, BtnHover.B);
+            }
             // 霜面：面板/输入/按钮统一半透明，透出底下的壁纸模糊层
             if (Frost.On)
             {
@@ -186,6 +195,7 @@ namespace HugeLauncher.Ui
         CornerRadius radius = new CornerRadius(5);
         Spring pressSpring;      // 玻璃按压缩放弹簧
         public bool GlassFixed;  // 玻璃底用活底透镜（固定铬件）；false=模拟渐变（滚动内容）
+        public double HoverScale = 1.035;   // 悬停放大倍数（小标签可以调小）
         Visual glassSource;
         // 活底来源图层（玻璃件正下方的前台层，如左栏史蒂夫层）：赋值即重建脸立刻生效
         public Visual GlassSource
@@ -232,6 +242,7 @@ namespace HugeLauncher.Ui
             MouseLeave += OnMouseLeave;
             MouseLeftButtonDown += OnDown;
             MouseLeftButtonUp += OnUp;
+            HoverMagnet.Attach(this);   // 悬停惯性：跟着鼠标被拖一点，停下弹回
             ThemeManager.GlassChanged += delegate { BuildFace(); };
             ThemeManager.SkinChanged += delegate { BuildFace(); };
         }
@@ -515,7 +526,7 @@ namespace HugeLauncher.Ui
             if (!enabledFlag || isChecked) return;
             Color to = Frost.On ? ((SolidColorBrush)Frost.ButtonHover).Color : FaceColor(hoverBg);
             Ani.Start(aniKey + "c", Ani.AaColor(bgBrush, to, 100), Ani.AaColor(fgBrush, hoverFg, 100));
-            if (Glass.On) SpringEngine.Go(pressSpring, 1.03, ApplyPressSpring);
+            SpringEngine.Go(pressSpring, HoverScale, ApplyPressSpring);
         }
 
         void OnMouseLeave(object sender, MouseEventArgs e)
@@ -523,25 +534,15 @@ namespace HugeLauncher.Ui
             if (!enabledFlag || isChecked) return;
             Color to = Frost.On ? ((SolidColorBrush)Frost.Button).Color : FaceColor(normalBg);
             Ani.Start(aniKey + "c", Ani.AaColor(bgBrush, to, 200), Ani.AaColor(fgBrush, normalFg, 200));
-            if (Glass.On) SpringEngine.Go(pressSpring, 1.0, ApplyPressSpring);
+            SpringEngine.Go(pressSpring, 1.0, ApplyPressSpring);
         }
 
         void OnDown(object sender, MouseButtonEventArgs e)
         {
             if (!enabledFlag) return;
             CaptureMouse();
-            if (Glass.On)
-            {
-                // 玻璃按下：弹簧压到 0.955（阻尼小，松手自然过冲回弹）
-                SpringEngine.Go(pressSpring, 0.955, ApplyPressSpring);
-            }
-            else
-            {
-                // 按下缓压：快速压到 0.955，按住再继续微压（PCL MyButton 配方）
-                Ani.Start(aniKey,
-                    Ani.Aa(delegate(double d) { scale.ScaleX += d; scale.ScaleY += d; }, 0.955 - scale.ScaleX, 80, new AniEaseOutFluent(Ani.ExtraStrong)),
-                    Ani.Aa(delegate(double d) { scale.ScaleX += d; scale.ScaleY += d; }, -0.01, 700, new AniEaseOutFluent(Ani.Middle), 0, true));
-            }
+            // 两种皮肤统一走同一根弹簧：按下 0.955，松手回 1（阻尼小，自然过冲）
+            SpringEngine.Go(pressSpring, 0.955, ApplyPressSpring);
             e.Handled = true;
         }
 
@@ -549,13 +550,7 @@ namespace HugeLauncher.Ui
         {
             if (!enabledFlag) return;
             if (IsMouseCaptured) ReleaseMouseCapture();
-            if (Glass.On)
-                SpringEngine.Go(pressSpring, IsMouseOver ? 1.03 : 1.0, ApplyPressSpring);
-            else
-                // 松手回弹：先过冲到 1.03 再回落 1.0（Q 弹）
-                Ani.Start(aniKey,
-                    Ani.Aa(delegate(double d) { scale.ScaleX += d; scale.ScaleY += d; }, 1.03 - scale.ScaleX, 250, new AniEaseOutBack(Ani.Weak)),
-                    Ani.Aa(delegate(double d) { scale.ScaleX += d; scale.ScaleY += d; }, -0.03, 250, new AniEaseOutFluent(Ani.Strong), 0, true));
+            SpringEngine.Go(pressSpring, IsMouseOver ? HoverScale : 1.0, ApplyPressSpring);
             if (IsMouseOver)
             {
                 if (toggleMode)
@@ -1973,6 +1968,95 @@ namespace HugeLauncher.Ui
             else
                 Ani.Start(aniKey + "i", Ani.AaProgress(delegate(double e) { indicator.Height = from * (1 - e); },
                     120, new AniEaseInFluent(Ani.Weak)));
+        }
+    }
+    // 游玩统计小部件：近 7 天条形图 + 右下角「清空本周」
+    static class PlayStatsWidget
+    {
+        public static UIElement Build()
+        {
+            var root = new Grid();
+            root.RowDefinitions.Add(UiHelpers.AutoRow());
+            root.RowDefinitions.Add(UiHelpers.StarRow());
+            root.RowDefinitions.Add(UiHelpers.AutoRow());
+
+            var line = new TextBlock();
+            line.FontSize = 12;
+            line.Foreground = Palette.B(Palette.Text);
+            root.Children.Add(line);
+
+            var chart = new Grid();
+            chart.VerticalAlignment = VerticalAlignment.Stretch;
+            chart.Margin = new Thickness(0, 4, 0, 3);
+            Grid.SetRow(chart, 1);
+            var bars = new Border[7];
+            var labels = new TextBlock[7];
+            for (int i = 0; i < 7; i++)
+            {
+                chart.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                var wrap = new Grid();
+                var bar = new Border();
+                bar.CornerRadius = new CornerRadius(3);
+                bar.VerticalAlignment = VerticalAlignment.Bottom;
+                bar.Margin = new Thickness(2, 0, 2, 0);
+                bar.Background = Palette.B(ThemeManager.CurrentColor);
+                bar.Opacity = 0.30 + 0.70 * (i / 6.0);   // 越靠近今天越亮
+                bar.Height = 2;
+                wrap.Children.Add(bar);
+                Grid.SetColumn(wrap, i);
+                chart.Children.Add(wrap);
+                bars[i] = bar;
+            }
+            root.Children.Add(chart);
+
+            var foot = new Grid();
+            foot.ColumnDefinitions.Add(UiHelpers.StarCol());
+            foot.ColumnDefinitions.Add(UiHelpers.AutoCol());
+            var days = new TextBlock();
+            days.FontSize = 9.5;
+            days.VerticalAlignment = VerticalAlignment.Center;
+            days.Foreground = Palette.B(Palette.Dim);
+            foot.Children.Add(days);
+            var del = new FlatButton("清空本周");
+            del.SetFontSize(10);
+            del.HoverScale = 1.01;
+            del.SetPadding(new Thickness(9, 2, 9, 2));
+            del.SetCornerRadius(new CornerRadius(5));
+            del.SetColors(Color.FromArgb(0, 0, 0, 0), Color.FromArgb(26, 255, 255, 255), Palette.Dim, Palette.Text);
+            Grid.SetColumn(del, 1);
+            foot.Children.Add(del);
+            Grid.SetRow(foot, 2);
+            root.Children.Add(foot);
+
+            Action render = delegate
+            {
+                int today = 0, week = 0;
+                var d = new int[7];
+                try { today = Stats.Today(); week = Stats.ThisWeek(); d = Stats.Last7(); } catch { }
+                int max = 1;
+                for (int i = 0; i < 7; i++) if (d[i] > max) max = d[i];
+                line.Text = "今天 " + today + " 次 · 本周 " + week + " 次";
+                double hh = chart.ActualHeight > 8 ? chart.ActualHeight - 2 : 30;
+                for (int i = 0; i < 7; i++)
+                    bars[i].Height = Math.Max(2, hh * d[i] / max);
+                DateTime t = DateTime.Now;
+                string[] wd = { "日", "一", "二", "三", "四", "五", "六" };
+                var sb = new System.Text.StringBuilder();
+                for (int i = 0; i < 7; i++)
+                {
+                    if (i > 0) sb.Append("  ");
+                    sb.Append(wd[(int)t.AddDays(i - 6).DayOfWeek]);
+                }
+                days.Text = sb.ToString();
+            };
+            del.Click += delegate
+            {
+                try { Stats.ClearWeek(); } catch { }
+                render();
+            };
+            render();
+            chart.SizeChanged += delegate { render(); };   // 小部件被拉伸时条形图跟着长高
+            return root;
         }
     }
 }

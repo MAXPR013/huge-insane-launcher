@@ -6,12 +6,14 @@ rem HugeInsaneLauncher\Images on startup (see Paths.EnsureImages).
 "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe" -nologo -target:winexe -out:HugeInsaneLauncher.exe %* ^
  -lib:"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\WPF" ^
  -r:PresentationFramework.dll -r:PresentationCore.dll -r:WindowsBase.dll ^
- -r:System.Web.Extensions.dll -r:System.Xml.dll ^
+ -r:System.Web.Extensions.dll -r:System.Xml.dll -r:System.Security.dll ^
  -r:System.IO.Compression.dll -r:System.IO.Compression.FileSystem.dll ^
  -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:System.Xaml.dll ^
  -win32icon:"HugeInsaneLauncher\Images\hil.ico" ^
  -resource:"HugeInsaneLauncher\Images\steve.png",stevepng ^
+ -resource:"HugeInsaneLauncher\Images\items.zip",img.items.zip ^
  -resource:"HugeInsaneLauncher\tools\lan-agent\hil-lan-agent.jar",hil-lan-agent.jar ^
+ -resource:"HugeInsaneLauncher\tools\cubiomes.dll",cubiomes.dll ^
  -resource:"HugeInsaneLauncher\Images\Blocks\Anvil.png",img.Blocks.Anvil.png ^
  -resource:"HugeInsaneLauncher\Images\Blocks\CobbleStone.png",img.Blocks.CobbleStone.png ^
  -resource:"HugeInsaneLauncher\Images\Blocks\CommandBlock.png",img.Blocks.CommandBlock.png ^

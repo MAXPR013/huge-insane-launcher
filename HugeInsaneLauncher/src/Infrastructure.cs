@@ -1,4 +1,4 @@
-// HugeLauncher - 基础设施：路径/配置/JSON/网络/下载池/进度模型
+// HugeLauncher - 基础设施：路?配置/JSON/网络/下载?进度模型
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -31,8 +31,8 @@ namespace HugeLauncher
 
         public static void EnsureDirs()
         {
-            // 品牌改名迁移：旧配置目录 HugeGoingLauncher → HugeInsaneLauncher（老用户首次升级时整体搬走）
-            string oldDir = Path.Combine(Root, "HugeGoingLauncher");
+            // 品牌改名迁移：旧配置目录 HugeGoingLauncher ?HugeInsaneLauncher（老用户首次升级时整体搬走。
+        string oldDir = Path.Combine(Root, "HugeGoingLauncher");
             if (!Directory.Exists(LauncherDir) && Directory.Exists(oldDir))
             {
                 try { Directory.Move(oldDir, LauncherDir); } catch { }
@@ -73,8 +73,53 @@ namespace HugeLauncher
                             s.CopyTo(fs);
                     }
                 }
+                EnsureItems(imgRoot, asm);
+                // 调试：HIL_ICON_DUMP=oak_fence,stone_stairs 启动时把方块模型图标渲染出来，便于离线验收
+                string dump = Environment.GetEnvironmentVariable("HIL_ICON_DUMP");
+                if (!string.IsNullOrEmpty(dump))
+                {
+                    string[] ids = dump.Split(',');
+                    for (int i = 0; i < ids.Length; i++)
+                    {
+                        string id = ids[i].Trim();
+                        if (id.Length > 0) { try { BlockIcon.Get(id); } catch { } }
+                    }
+                }
             }
             catch { }   // 只读目录等异常不影响启动
+        }
+
+        // 物品贴图：内嵌 items.zip（从游戏 jar 抽的 item/block PNG），首次运行整体解到 Images\Items。
+        // 用 .v 标记版本：贴图集更新后改版本号，老目录会自动重解（否则新加的图标永远不出现）。
+        const string ItemsVersion = "3";
+
+        static void EnsureItems(string imgRoot, Assembly asm)
+        {
+            try
+            {
+                string itemsDir = Path.Combine(imgRoot, "Items");
+                string marker = Path.Combine(itemsDir, ".v");
+                if (File.Exists(marker))
+                {
+                    try { if (File.ReadAllText(marker).Trim() == ItemsVersion) return; } catch { }
+                }
+                using (Stream s = asm.GetManifestResourceStream("img.items.zip"))
+                {
+                    if (s == null) return;
+                    string tmp = Path.Combine(imgRoot, "items.tmp.zip");
+                    using (FileStream fs = new FileStream(tmp, FileMode.Create, FileAccess.Write))
+                        s.CopyTo(fs);
+                    try
+                    {
+                        if (Directory.Exists(itemsDir)) Directory.Delete(itemsDir, true);
+                        System.IO.Compression.ZipFile.ExtractToDirectory(tmp, itemsDir);
+                        File.WriteAllText(marker, ItemsVersion);
+                    }
+                    catch { }
+                    finally { try { File.Delete(tmp); } catch { } }
+                }
+            }
+            catch { }
         }
 
         public static string Fwd(string p) { return p.Replace('\\', '/'); }
@@ -96,7 +141,7 @@ namespace HugeLauncher
         {
             return Path.Combine(RuntimeDirFor(component), "bin", "javaw.exe");
         }
-        // 任意可用的 java.exe：旧 jre 优先，否则第一个组件运行时（Forge/NeoForge 安装器用，不挑版本）
+        // 任意可用?java.exe：旧 jre 优先，否则第一个组件运行时（Forge/NeoForge 安装器用，不挑版本）
         public static string AnyJavaExe
         {
             get
@@ -113,8 +158,8 @@ namespace HugeLauncher
                         }
                 }
                 catch { }
-                return JavaExe;   // 全没有就返回默认路径，让调用方得到"找不到文件"的明确错误
-            }
+                return JavaExe;   // 全没有就返回默认路径，让调用方得?找不到文?的明确错。
+        }
         }
     }
 
@@ -122,35 +167,39 @@ namespace HugeLauncher
     {
         public string Username = "Player";
         public List<string> UserHistory = new List<string>();
-        public List<string> RecentLaunches = new List<string>();   // 最近启动的版本（新→旧，悬浮球快速启动用）
+        public List<string> RecentLaunches = new List<string>();   // 最近启动的版本（新→旧，悬浮球快速启动用。
+        public List<string> RecentServers = new List<string>();    // 最近碰过的服务器地址（首页小部件用）
         public string VersionId = "";
         public bool ShowSnapshots = false;
+        public string CollapsedGroups = "";     // 下载页折叠状态（release,snapshot,fool,old 逗号分隔。
+        public bool Onboarded = false;          // 新手引导是否已完。
+        public int OnboardStep = 0;             // 引导断点（中途关掉下次接着看）
         public int MemoryMb = 2048;
-        public string Priority = "正常";       // 高 / 高于正常 / 正常
+        public string Priority = "正常";       // ?/ 高于正常 / 正常
         public double AnimSpeed = 1.0;          // 0 - 2
-        public string Theme = "绿";             // 绿/蓝/紫/橙/红/白
+        public string Theme = "绿";             // 绿/蓝/紫/粉/白
         public bool InstallJavaToSystemAsked = false;
         public bool LogExpanded = false;        // 底部日志面板是否展开
         public bool DefenderTipShown = false;   // 是否已提示过 Defender 排除项建议
         public bool AiEnabled = true;           // 开启 AI 史蒂夫（H史），默认开
-        public string AiApiKey = "";            // DeepSeek API Key（选填；空 = 内置免费通道 AiClient.BuiltinRelay）
-        public string AiEndpoint = "https://api.deepseek.com/v1";   // 仅自有 Key 时生效
+        public string AiApiKey = "";            // DeepSeek API Key（选填；空 = 内置免费通道 AiClient.BuiltinRelay。
+        public string AiEndpoint = "https://api.deepseek.com/v1";   // 仅自?Key 时生。
         public bool AiAnim = true;              // H史拟人动画（ACTING 演戏开关）
-        public bool LiquidGlass = true;         // 液态玻璃（兼容旧字段；true=流光）
+        public bool LiquidGlass = true;         // 液态玻璃（兼容旧字段；true=流光。
         public string Skin = "liquid";          // liquid=流光 / frost=霜面 / solid=素底
         public string Layout = "classic";       // classic=经典横排 / vertical=纵向舞台
-        public bool GcBoost = true;             // JVM GC 优化参数（治卡顿，默认开）
-        public string ModrinthMirror = "";      // Modrinth 反代基址（空=官方直连）
-        public bool FloatBallOn = true;         // 桌面悬浮球（H史/下载/服务器 极简面板）
-        public double FloatBallX = -1;          // 球心屏幕坐标；-1 = 默认右下角
+        public bool GcBoost = true;             // JVM GC 优化参数（治卡顿，默认开。
+        public string ModrinthMirror = "";      // Modrinth 反代基址（空=官方直连。
+        public bool FloatBallOn = true;         // 桌面悬浮球（H?下载/服务?极简面板。
+        public double FloatBallX = -1;          // 球心屏幕坐标?1 = 默认右下。
         public double FloatBallY = -1;
         public bool LightMode = false;          // 亮色模式（白底深字；渐变罩切换）
-        public bool AutoDayNight = true;        // 自动调色：7:00-19:00 亮色，其余暗色（开着时手动开关被托管）
+        public bool AutoDayNight = true;        // 自动调色?:00-19:00 亮色，其余暗色（开着时手动开关被托管。
         public bool AutoUpdate = true;          // 启动时自动检查新版本（先问再更）
-        public bool SlimeOn = true;             // 流动史莱姆背景（壁纸取色的 metaball 色块）
+        public bool SlimeOn = true;             // 流动史莱姆背景（壁纸取色?metaball 色块。
         public bool SlimeUserSet;               // 用户是否手动动过史莱姆开关（首次按主题给默认值）
         public double SlimeBlurBg = 8;          // 背景模糊半径 px
-        public int SlimeFrostMid = 60;          // [已废弃] 中层不透明度调节已砍，启动时锁定 60；字段仅为读旧配置不报错
+        public int SlimeFrostMid = 60;          // [已废弃] 中层不透明度调节已砍，启动时锁?60；字段仅为读旧配置不报错
         public double SlimeBlurFore = 0;        // [已废弃] 前景柔化已砍，启动时锁定 0
 
         public void PushUserHistory(string name)
@@ -167,6 +216,17 @@ namespace HugeLauncher
             RecentLaunches.Remove(ver);
             RecentLaunches.Insert(0, ver);
             while (RecentLaunches.Count > 10) RecentLaunches.RemoveAt(RecentLaunches.Count - 1);
+            try { Stats.OnLaunch(ver); } catch { }
+        }
+
+        // 最近碰过的服务器：从联机页复制地址时记一笔，最多留 5 。
+        public void PushRecentServer(string addr)
+        {
+            if (string.IsNullOrEmpty(addr)) return;
+            RecentServers.Remove(addr);
+            RecentServers.Insert(0, addr);
+            while (RecentServers.Count > 5) RecentServers.RemoveAt(RecentServers.Count - 1);
+            try { Save(); } catch { }
         }
 
         static string JoinCsv(List<string> l) { return string.Join(",", l.ToArray()); }
@@ -196,8 +256,15 @@ namespace HugeLauncher
                             c.RecentLaunches.Clear();
                             foreach (var s in v.Split(',')) if (s.Length > 0) c.RecentLaunches.Add(s);
                             break;
+                        case "RecentServers":
+                            c.RecentServers.Clear();
+                            foreach (var s in v.Split(',')) if (s.Length > 0) c.RecentServers.Add(s);
+                            break;
                         case "VersionId": c.VersionId = v; break;
                         case "ShowSnapshots": c.ShowSnapshots = (v == "1"); break;
+                        case "CollapsedGroups": c.CollapsedGroups = v; break;
+                        case "Onboarded": c.Onboarded = (v == "1"); break;
+                        case "OnboardStep": if (int.TryParse(v, out n)) c.OnboardStep = n; break;
                         case "MemoryMb": if (int.TryParse(v, out n)) c.MemoryMb = n; break;
                         case "Priority": c.Priority = v; break;
                         case "AnimSpeed": if (double.TryParse(v, out d)) c.AnimSpeed = d; break;
@@ -248,8 +315,12 @@ namespace HugeLauncher
                     "Username=" + Username,
                     "UserHistory=" + JoinCsv(UserHistory),
                     "RecentLaunches=" + JoinCsv(RecentLaunches),
+                    "RecentServers=" + JoinCsv(RecentServers),
                     "VersionId=" + VersionId,
                     "ShowSnapshots=" + (ShowSnapshots ? "1" : "0"),
+                    "CollapsedGroups=" + (CollapsedGroups ?? ""),
+                    "Onboarded=" + (Onboarded ? "1" : "0"),
+                    "OnboardStep=" + OnboardStep,
                     "MemoryMb=" + MemoryMb,
                     "Priority=" + Priority,
                     "AnimSpeed=" + AnimSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -322,7 +393,7 @@ namespace HugeLauncher
         public Kind EventKind;
         public int StepIndex;
         public string StepName = "";
-        public long Current, Total;      // 文件数
+        public long Current, Total;      // 文件。
         public double MbPerSec;          // 当前速度
         public bool Success;
         public string Message = "";
@@ -339,7 +410,7 @@ namespace HugeLauncher
     {
         public string Url, Dest, Sha1;
         public long Size;
-        public string Mirror = null;   // 镜像 URL，可为 null（接线前保持 null）
+        public string Mirror = null;   // 镜像 URL，可?null（接线前保持 null。
         public DownloadTask(string url, string dest, string sha1, long size)
         { Url = url; Dest = dest; Sha1 = sha1; Size = size; }
     }
@@ -369,7 +440,7 @@ namespace HugeLauncher
                 return BitConverter.ToString(sha.ComputeHash(fs)).Replace("-", "").ToLowerInvariant();
         }
 
-        // 杀毒软件/索引器会短暂锁住刚落盘的文件：IO 操作带退避重试，重试约 12 秒才放弃
+        // 杀毒软?索引器会短暂锁住刚落盘的文件：IO 操作带退避重试，重试?12 秒才放弃
         static T RetryIo<T>(Func<T> f)
         {
             int wait = 400;
@@ -392,9 +463,8 @@ namespace HugeLauncher
         }
 
         const long ChunkThreshold = 2L * 1024 * 1024;    // >=2MB 尝试分块下载
-        const long BigFileThreshold = 16L * 1024 * 1024; // >=16MB 切 8 段
-        const int MaxAttempts = 4;                       // 每文件/每分块最大尝试次数
-
+        const long BigFileThreshold = 16L * 1024 * 1024; // >=16MB ?8 。
+        const int MaxAttempts = 4;                       // 每文?每分块最大尝试次。
         static HttpWebRequest NewRequest(string url)
         {
             var req = (HttpWebRequest)WebRequest.Create(url);
@@ -411,7 +481,7 @@ namespace HugeLauncher
                 DownloadPool.OnThrottled();
         }
 
-        // 返回本次实际下载字节数（已存在跳过返回 0，失败返回 -1）
+        // 返回本次实际下载字节数（已存在跳过返?0，失败返?-1。
         public static long DownloadFile(DownloadTask t, Action<long> bytesCallback)
         {
             if (Verify(t.Dest, t.Sha1, t.Size)) { ResumeClear(t); return 0; }
@@ -424,8 +494,7 @@ namespace HugeLauncher
                 r = DownloadStreamed(t, bytesCallback);
             if (r < 0)
             {
-                // 分块下载保留现场（dest + .hilpart）供断点续传；
-                // 整文件下载删掉残留的不完整文件，避免半截文件留盘
+                // 分块下载保留现场（dest + .hilpart）供断点续传?                // 整文件下载删掉残留的不完整文件，避免半截文件留盘
                 if (!chunked) { try { if (File.Exists(t.Dest)) File.Delete(t.Dest); } catch { } }
             }
             return r;
@@ -437,7 +506,7 @@ namespace HugeLauncher
 
         static readonly object resumeLock = new object();
 
-        // 读取续传现场；现场与本次任务不符（大小/哈希/块数/文件缺失）返回全零数组
+        // 读取续传现场；现场与本次任务不符（大?哈希/块数/文件缺失）返回全零数。
         static long[] ResumeLoad(DownloadTask t, int chunks)
         {
             var zero = new long[chunks];
@@ -488,7 +557,7 @@ namespace HugeLauncher
             try { File.Delete(SidecarPath(t.Dest)); } catch { }
         }
 
-        // 探测服务器是否支持 Range（发 bytes=0-0 看是否回 206）
+        // 探测服务器是否支?Range（发 bytes=0-0 看是否回 206。
         static bool ProbeRange(string url)
         {
             try
@@ -535,8 +604,8 @@ namespace HugeLauncher
                         && (t.Size <= 0 || bytes == t.Size)
                         && (string.IsNullOrEmpty(t.Sha1) || hash == t.Sha1);
                     if (ok) return bytes;
-                    // 校验失败同样视为本次失败，继续换源重试
-                }
+                    // 校验失败同样视为本次失败，继续换源重。
+        }
                 catch (WebException we) { ReportIfThrottled(we); }
                 catch { }
                 if (attempt < MaxAttempts - 1) { Thread.Sleep(backoff); backoff *= 2; }
@@ -544,19 +613,17 @@ namespace HugeLauncher
             return -1;
         }
 
-        // 大文件分块并行下载（前提是 ProbeRange 已确认支持 Range）
+        // 大文件分块并行下载（前提?ProbeRange 已确认支?Range。
         static long DownloadChunked(DownloadTask t, Action<long> bytesCallback)
         {
-            // 镜像不一定支持 Range（BMCLAPI 分流节点常直接回 200）：先探测，不支持就移出轮换，
-            // 免得每个轮到镜像的分块都白跑一次完整请求
-            string mirror = t.Mirror;
+            // 镜像不一定支?Range（BMCLAPI 分流节点常直接回 200）：先探测，不支持就移出轮换?            // 免得每个轮到镜像的分块都白跑一次完整请。
+        string mirror = t.Mirror;
             if (!string.IsNullOrEmpty(mirror) && !ProbeRange(mirror)) mirror = null;
             int chunks = t.Size >= BigFileThreshold ? 8 : 4;
             long chunkLen = (t.Size + chunks - 1) / chunks;
-            // 断点续传：有现场则跳过已下完的分块、半拉子分块从断点续拉
-            long[] resumed = ResumeLoad(t, chunks);
-            // 预分配总长，各分块 seek 到自己的偏移写（已存在的现场文件 SetLength 等长不毁内容）
-            using (var fs = RetryIo(() => new FileStream(t.Dest, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite)))
+            // 断点续传：有现场则跳过已下完的分块、半拉子分块从断点续?            long[] resumed = ResumeLoad(t, chunks);
+            // 预分配总长，各分块 seek 到自己的偏移写（已存在的现场文件 SetLength 等长不毁内容。
+        using (var fs = RetryIo(() => new FileStream(t.Dest, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite)))
                 fs.SetLength(t.Size);
             var results = new bool[chunks];
             var threads = new Thread[chunks];
@@ -564,23 +631,20 @@ namespace HugeLauncher
             {
                 int idx = i;
                 long start = i * chunkLen;
-                long end = Math.Min(t.Size, start + chunkLen) - 1; // 含端点
-                threads[i] = new Thread(delegate() { results[idx] = DownloadChunk(t, mirror, idx, start, end, resumed, bytesCallback); });
+                long end = Math.Min(t.Size, start + chunkLen) - 1; // 含端?                threads[i] = new Thread(delegate() { results[idx] = DownloadChunk(t, mirror, idx, start, end, resumed, bytesCallback); });
                 threads[i].IsBackground = true;
                 threads[i].Start();
             }
             for (int i = 0; i < chunks; i++) threads[i].Join();
-            for (int i = 0; i < chunks; i++) if (!results[i]) return -1;   // 保留现场等下次续传
-            // 并行乱序写无法边下边校，最后一次性读盘校验
-            if (Verify(t.Dest, t.Sha1, t.Size)) { ResumeClear(t); return t.Size; }
-            // 校验失败说明内容不可信，连现场一起清掉重来
-            ResumeClear(t);
+            for (int i = 0; i < chunks; i++) if (!results[i]) return -1;   // 保留现场等下次续?            // 并行乱序写无法边下边校，最后一次性读盘校。
+        if (Verify(t.Dest, t.Sha1, t.Size)) { ResumeClear(t); return t.Size; }
+            // 校验失败说明内容不可信，连现场一起清掉重?            ResumeClear(t);
             try { RetryIo(() => { File.Delete(t.Dest); return 0; }); } catch { }
             return -1;
         }
 
-        // 单分块下载：重试时 Range 从 块起点+已收 继续，且每次换源（主↔镜像交替）
-        // resumed：断点续传进度数组（可为 null），每收 512KB 或完成时落盘一次
+        // 单分块下载：重试?Range ?块起?已收 继续，且每次换源（主↔镜像交替）
+        // resumed：断点续传进度数组（可为 null），每收 512KB 或完成时落盘一。
         static bool DownloadChunk(DownloadTask t, string mirror, int index, long start, long end, long[] resumed, Action<long> bytesCallback)
         {
             bool hasMirror = !string.IsNullOrEmpty(mirror);
@@ -591,7 +655,7 @@ namespace HugeLauncher
             int backoff = 300;
             for (int attempt = 0; attempt < MaxAttempts && received < len; attempt++)
             {
-                // 相邻分块轮流用主/镜像（分块0用主、1用镜像……），重试再换一次源
+                // 相邻分块轮流用主/镜像（分?用主?用镜像……），重试再换一次源
                 string url = t.Url;
                 if (hasMirror && (index + attempt) % 2 == 1) url = mirror;
                 try
@@ -601,7 +665,7 @@ namespace HugeLauncher
                     using (var resp = (HttpWebResponse)req.GetResponse())
                     {
                         if (resp.StatusCode != HttpStatusCode.PartialContent)
-                            throw new WebException("服务器未按 Range 返回 206");
+                            throw new WebException("服务器未?Range 返回 206");
                         using (var rs = resp.GetResponseStream())
                         using (var fs = new FileStream(t.Dest, FileMode.Open, FileAccess.Write, FileShare.ReadWrite))
                         {
@@ -610,8 +674,8 @@ namespace HugeLauncher
                             int n;
                             while (received < len && (n = rs.Read(buf, 0, buf.Length)) > 0)
                             {
-                                // 钳位：服务器多吐也不许越过分块边界
-                                int w = (int)Math.Min((long)n, len - received);
+                                // 钳位：服务器多吐也不许越过分块边。
+        int w = (int)Math.Min((long)n, len - received);
                                 fs.Write(buf, 0, w);
                                 received += w;
                                 if (bytesCallback != null) bytesCallback(w);
@@ -646,12 +710,10 @@ namespace HugeLauncher
         Stopwatch watch = Stopwatch.StartNew();
         double lastMb;
         Action<long, long, double> progress; // done, total, MB/s
-        int maxWorkers;                      // 本次 Run 的 workers，作为动态上限的天花板
-
-        // 自适应并发：全局动态上限（429/403 减半、下限 4；成功后每文件 +1 缓慢回升）
-        // 读写一律走 Interlocked，故用普通静态字段（volatile 按 ref 传递会触发 CS0420）
+        int maxWorkers;                      // 本次 Run ?workers，作为动态上限的天花?
+        // 自适应并发：全局动态上限（429/403 减半、下?4；成功后每文?+1 缓慢回升?        // 读写一律走 Interlocked，故用普通静态字段（volatile ?ref 传递会触发 CS0420。
         static int dynLimit = 64;
-        static int active;                 // 当前活跃下载数
+        static int active;                 // 当前活跃下载。
         static long lastThrottleTicks;     // 上次限流时间
 
         public DownloadPool(List<DownloadTask> tasks, Action<long, long, double> progress)
@@ -661,7 +723,7 @@ namespace HugeLauncher
             this.progress = progress;
         }
 
-        // 收到 429/403 时调用：动态并发上限减半（下限 4）
+        // 收到 429/403 时调用：动态并发上限减半（下限 4。
         public static void OnThrottled()
         {
             Interlocked.Exchange(ref lastThrottleTicks, DateTime.UtcNow.Ticks);
@@ -673,7 +735,7 @@ namespace HugeLauncher
             }
         }
 
-        // 文件成功完成后调用：距上次限流超 10 秒则上限 +1（不超过本次 workers）
+        // 文件成功完成后调用：距上次限流超 10 秒则上限 +1（不超过本次 workers。
         void OnFileSuccess()
         {
             if (DateTime.UtcNow.Ticks - Interlocked.Read(ref lastThrottleTicks) <= 10L * TimeSpan.TicksPerSecond) return;
@@ -735,7 +797,7 @@ namespace HugeLauncher
 
     static class Env
     {
-        // 检测系统 Java（PATH 或常见目录）
+        // 检测系?Java（PATH 或常见目录）
         public static bool SystemJavaPresent()
         {
             try
@@ -765,7 +827,7 @@ namespace HugeLauncher
         [System.Runtime.InteropServices.DllImport("kernel32.dll")]
         static extern bool GlobalMemoryStatusEx(MemStatus ms);
 
-        // 物理内存总量（MB），读不到时按 8192 兜底
+        // 物理内存总量（MB），读不到时?8192 兜底
         public static long TotalPhysMb()
         {
             var ms = new MemStatus();
@@ -774,3 +836,4 @@ namespace HugeLauncher
         }
     }
 }
+

@@ -48,6 +48,36 @@ namespace HugeLauncher
             }
         }
 
+        // 令牌落盘加密：DPAPI（当前用户）。旧明文文件读进来也能用，写出时自动升级成密文。
+        static readonly byte[] Entropy = System.Text.Encoding.UTF8.GetBytes("HIL.acct.v1");
+
+        public static string Protect(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            try
+            {
+                byte[] raw = System.Text.Encoding.UTF8.GetBytes(s);
+                byte[] enc = System.Security.Cryptography.ProtectedData.Protect(
+                    raw, Entropy, System.Security.Cryptography.DataProtectionScope.CurrentUser);
+                return "dpapi:" + Convert.ToBase64String(enc);
+            }
+            catch { return s; }
+        }
+
+        public static string Unprotect(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            if (!s.StartsWith("dpapi:")) return s;   // 旧明文
+            try
+            {
+                byte[] enc = Convert.FromBase64String(s.Substring(6));
+                byte[] raw = System.Security.Cryptography.ProtectedData.Unprotect(
+                    enc, Entropy, System.Security.Cryptography.DataProtectionScope.CurrentUser);
+                return System.Text.Encoding.UTF8.GetString(raw);
+            }
+            catch { return ""; }
+        }
+
         public Dictionary<string, object> ToDict()
         {
             var d = new Dictionary<string, object>();
@@ -56,8 +86,8 @@ namespace HugeLauncher
             d["uuid"] = Uuid;
             d["server"] = Server;
             d["serverName"] = ServerName;
-            d["accessToken"] = AccessToken;
-            d["clientToken"] = ClientToken;
+            d["accessToken"] = Protect(AccessToken);
+            d["clientToken"] = Protect(ClientToken);
             d["lastUsed"] = LastUsed;
             return d;
         }
@@ -70,8 +100,8 @@ namespace HugeLauncher
             a.Uuid = Json.Str(d, "uuid") ?? "";
             a.Server = Json.Str(d, "server") ?? "";
             a.ServerName = Json.Str(d, "serverName") ?? "";
-            a.AccessToken = Json.Str(d, "accessToken") ?? "";
-            a.ClientToken = Json.Str(d, "clientToken") ?? "";
+            a.AccessToken = Unprotect(Json.Str(d, "accessToken"));
+            a.ClientToken = Unprotect(Json.Str(d, "clientToken"));
             a.LastUsed = Json.Long(d, "lastUsed");
             return a;
         }

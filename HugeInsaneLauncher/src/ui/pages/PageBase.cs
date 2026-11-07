@@ -1,5 +1,6 @@
 // HugeLauncher.Ui - 页面集成契约：页面基类 + 导航器（所有页面子代理必须遵守，禁止修改本文件）
 using System;
+using System.Windows;
 using System.Windows.Controls;
 
 namespace HugeLauncher.Ui.Pages
@@ -25,6 +26,24 @@ namespace HugeLauncher.Ui.Pages
         // 版本选择变更通知（主窗口刷新侧栏「当前版本」；未实现时静默）
         public static Action VersionSelectHandler;
         public static void NotifyVersionSelected() { var h = VersionSelectHandler; if (h != null) h(); }
+
+        // 重新查看新手引导（主窗口实现）
+        public static Action RestartOnboardHandler;
+        public static void RequestRestartOnboard() { var h = RestartOnboardHandler; if (h != null) h(); }
+
+        // 窗口级模态：内容挂到主窗口最上层，背景按需模糊
+        public static Action<UIElement, bool, Action> ModalShowHandler;
+        public static Action ModalHideHandler;
+        public static void ShowModal(UIElement content, bool blurEverything, Action onClosed)
+        {
+            var h = ModalShowHandler;
+            if (h != null) h(content, blurEverything, onClosed);
+        }
+        public static void HideModal()
+        {
+            var h = ModalHideHandler;
+            if (h != null) h();
+        }
     }
 
     // 页面导航。页面内跳转一律调 Navigator.Go，禁止直接 new 别的页面。

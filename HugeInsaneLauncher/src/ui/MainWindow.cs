@@ -19,7 +19,7 @@ namespace HugeLauncher.Ui
     {
         const string BrandName = "Huge Insane Launcher";
         // 版本号规则：年份.月份.该月第几个版本（当月首个省略末项，第二个为 1）
-        public const string Version = "26.11.1";
+        public const string Version = "26.12.0";
         public const string Channel = "Alpha";   // 渠道徽章：Alpha/Beta/Release
 
         Config cfg;
@@ -99,6 +99,14 @@ namespace HugeLauncher.Ui
 
         // AI 史蒂夫（H史）
         SteveView steveView;
+        Grid steveHost;          // 史蒂夫宿主（换皮肤时整只替换）
+        Grid onboardHost;        // 新手引导覆盖层宿主
+        int onboardStep;
+        Grid modalHost;          // 窗口级模态层（模糊整窗用）
+        Grid leftStackGrid;      // 左卡内容（品牌 + 侧栏）
+        Grid sideGrid;           // 侧栏（账号/聊天/史蒂夫/按钮）
+        Border rightPanelBorder; // 右卡
+        Action modalClosed;
         Grid steveLayer;         // 史蒂夫层：左栏玻璃件的活底来源（按钮底下史蒂夫的脚实时动）
         Border chatWrap;         // 聊天输入框外壳（仅 AiEnabled 时显示）
         TextBox chatInput;
@@ -124,8 +132,16 @@ namespace HugeLauncher.Ui
         public MainWindow()
         {
             cfg = Config.Load();
+            if (Environment.GetEnvironmentVariable("HIL_ONBOARD_DEMO") == "1") cfg.Onboarded = false;
             AccountStore.Init(cfg);   // 账号库：首启从用户名历史迁移离线账号
-            AccountStore.Changed += delegate { RefreshAccounts(); };
+            PageBase.RestartOnboardHandler = RestartOnboarding;
+            PageBase.ModalShowHandler = ShowWindowModal;
+            PageBase.ModalHideHandler = HideWindowModal;
+            AccountStore.Changed += delegate { RefreshAccounts(); RefreshSteve(); };
+            Skins.Updated += delegate
+            {
+                Dispatcher.BeginInvoke(new Action(delegate { RefreshSteve(); }));
+            };
             Modrinth.MirrorOverride = string.IsNullOrEmpty(cfg.ModrinthMirror) ? null : cfg.ModrinthMirror;
             UiWatchdog.Start(Dispatcher);   // 卡顿哨兵：只观测不改行为，卡死记录进 hil.log
             ThemeManager.Speed = cfg.AnimSpeed;
@@ -143,6 +159,8 @@ namespace HugeLauncher.Ui
             Slime.RefreshColorsAsync();   // 后台取壁纸色，回来后只给画布换色（Recolor），不重建 UI
             Palette.Apply(cfg.LightMode);   // 亮/暗色板在建 UI 前定位，控件首张脸就是对的
             Updater.NewVersionHandler = OnUpdateFound;
+            string layoutEnv = Environment.GetEnvironmentVariable("HIL_LAYOUT");
+            if (layoutEnv == "classic" || layoutEnv == "vertical") cfg.Layout = layoutEnv;
             ThemeManager.ApplySkin(cfg.Skin);   // 建 UI 前置位：流光/霜面/素底
             ThemeManager.ApplyLayout(cfg.Layout);
 
@@ -262,7 +280,12 @@ namespace HugeLauncher.Ui
             // 转球倒计时的"用户在操作"判定：点击/按键/鼠标移动都刷新时刻
             PreviewMouseDown += delegate { lastInput = DateTime.Now; };
             PreviewKeyDown += delegate { lastInput = DateTime.Now; };
-            PreviewMouseMove += delegate { lastInput = DateTime.Now; };
+            PreviewMouseMove += delegate(object s, MouseEventArgs e)
+            {
+                lastInput = DateTime.Now;
+                // 全局磁吸：除按钮/滑钮/文本框外，可点击区域自动挂上（只识别一次）
+                HoverMagnet.AttachSmart(e.OriginalSource as DependencyObject);
+            };
         }
 
         // ===== AI 史蒂夫接线：事件 → 气泡/聊天框/操作锁 =====
@@ -502,8 +525,122 @@ namespace HugeLauncher.Ui
             Grid.SetRowSpan(skinOverlay, 2);
             root.Children.Add(skinOverlay);
 
+            // 新手引导覆盖层（只在没看完时显示）
+            onboardHost = new Grid();
+            Grid.SetRow(onboardHost, 1);
+            Panel.SetZIndex(onboardHost, 200);
+            onboardHost.Visibility = Visibility.Collapsed;
+            root.Children.Add(onboardHost);
+
+            // 窗口级模态层：盖住整窗（含标题栏区域），背景可模糊
+            modalHost = new Grid();
+            Grid.SetRowSpan(modalHost, 2);
+            Panel.SetZIndex(modalHost, 500);
+            modalHost.Visibility = Visibility.Collapsed;
+            root.Children.Add(modalHost);
+
             rootBorder.Child = root;
             Content = rootBorder;
+            RefreshOnboarding();
+        }
+
+        // ===== 窗口级模态（模糊整窗 / 保留史蒂夫） =====
+        void ShowWindowModal(UIElement content, bool blurEverything, Action onClosed)
+        {
+            if (modalHost == null) return;
+            modalClosed = onClosed;
+            modalHost.Children.Clear();
+            var scrim = new Border();
+            scrim.Background = new SolidColorBrush(Color.FromArgb(80, 0, 0, 0));
+            scrim.MouseLeftButtonDown += delegate { HideWindowModal(); };
+            modalHost.Children.Add(scrim);
+            var wrap = new Grid();
+            wrap.Children.Add(content);
+            modalHost.Children.Add(wrap);
+            modalHost.Visibility = Visibility.Visible;
+            SetWindowBlur(true, !blurEverything);
+        }
+
+        void HideWindowModal()
+        {
+            if (modalHost != null)
+            {
+                modalHost.Children.Clear();
+                modalHost.Visibility = Visibility.Collapsed;
+            }
+            SetWindowBlur(false, false);
+            Action cb = modalClosed;
+            modalClosed = null;
+            if (cb != null) cb();
+        }
+
+        void SetWindowBlur(bool on, bool keepSteve)
+        {
+            System.Windows.Media.Effects.Effect blur = on ? new System.Windows.Media.Effects.BlurEffect { Radius = 14 } : null;
+            if (leftStackGrid != null)
+            {
+                for (int i = 0; i < leftStackGrid.Children.Count; i++)
+                {
+                    UIElement c = leftStackGrid.Children[i];
+                    if (on && keepSteve && c == sideGrid) continue;
+                    c.Effect = blur;
+                }
+            }
+            if (sideGrid != null)
+            {
+                for (int i = 0; i < sideGrid.Children.Count; i++)
+                {
+                    UIElement c = sideGrid.Children[i];
+                    if (on && keepSteve && (c == steveHost || c == steveLayer)) continue;
+                    c.Effect = blur;
+                }
+            }
+            if (rightPanelBorder != null) rightPanelBorder.Effect = blur;
+        }
+
+        // 引导覆盖层：没看完就按断点重挂（换主题重建后也接着在原步）
+        void RefreshOnboarding()
+        {
+            if (onboardHost == null) return;
+            if (cfg.Onboarded)
+            {
+                onboardHost.Children.Clear();
+                onboardHost.Visibility = Visibility.Collapsed;
+                return;
+            }
+            ShowOnboardStep(cfg.OnboardStep > onboardStep ? cfg.OnboardStep : onboardStep);
+        }
+
+        void ShowOnboardStep(int step)
+        {
+            if (onboardHost == null) return;
+            if (step < 0) step = 0;
+            if (step >= Onboarding.Steps) step = Onboarding.Steps - 1;
+            onboardStep = step;
+            cfg.OnboardStep = step;
+            try { cfg.Save(); } catch { }
+            var ui = Onboarding.Build(cfg, step, ShowOnboardStep, FinishOnboarding,
+                delegate { FinishOnboarding(); Navigate("settings:migrate"); },
+                delegate { FinishOnboarding(); Navigate("download:install"); });
+            ShowWindowModal(ui, true, null);   // 全窗模糊（含史蒂夫）
+        }
+
+        void FinishOnboarding()
+        {
+            cfg.Onboarded = true;
+            cfg.OnboardStep = 0;
+            try { cfg.Save(); } catch { }
+            HideWindowModal();
+        }
+
+        // 关于页「重新查看新手引导」用
+        public void RestartOnboarding()
+        {
+            cfg.Onboarded = false;
+            cfg.OnboardStep = 0;
+            onboardStep = 0;
+            try { cfg.Save(); } catch { }
+            RefreshOnboarding();
         }
 
         // 亮/暗色切换（带渐变动画）：罩子盖下 → 换色板 + 整套 UI 重建 → 揭开
@@ -714,13 +851,16 @@ namespace HugeLauncher.Ui
         {
             navGroups = new[]
             {
+                new NavGroup { Name = "首页", Labels = new string[0], Keys = new[] { "home:dashboard" } },
                 new NavGroup { Name = "下载", Labels = new[] { "原版游戏", "模组", "数据包", "资源包", "光影包", "整合包" },
                     Keys = new[] { "download:install", "download:mod", "download:datapack", "download:resourcepack", "download:shader", "download:pack" } },
-                new NavGroup { Name = "设置", Labels = new[] { "游戏设置", "启动器设置" },
-                    Keys = new[] { "settings:game", "settings:launcher" } },
                 new NavGroup { Name = "联机", Labels = new[] { "一键开服", "联机大厅", "服务器列表" },
                     Keys = new[] { "server:oneclick", "server:hall", "server:list" } },
                 new NavGroup { Name = "账号", Labels = new string[0], Keys = new[] { "account:home" } },
+                new NavGroup { Name = "设置", Labels = new[] { "游戏设置", "启动器设置" },
+                    Keys = new[] { "settings:game", "settings:launcher" } },
+                new NavGroup { Name = "更多", Labels = new[] { "找乐子", "工具", "关于" },
+                    Keys = new[] { "more:fun", "more:tools", "more:about" } },
             };
         }
 
@@ -804,6 +944,7 @@ namespace HugeLauncher.Ui
             g.ColumnDefinitions.Add(UiHelpers.StarCol());
 
             var sidebar = (Grid)BuildSidebar();
+            sideGrid = sidebar;
 
             var leftStack = new Grid();
             leftStack.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -811,6 +952,7 @@ namespace HugeLauncher.Ui
             leftStack.Children.Add(BuildBrandHeader());
             Grid.SetRow(sidebar, 1);
             leftStack.Children.Add(sidebar);
+            leftStackGrid = leftStack;
 
             var leftPanel = FrameVerticalPanel(leftStack);
             leftPanel.Margin = new Thickness(0, 6, 0, 10);
@@ -827,6 +969,7 @@ namespace HugeLauncher.Ui
             rightPanel.Margin = new Thickness(0, 6, 10, 10);
             Grid.SetColumn(rightPanel, 2);
             g.Children.Add(rightPanel);
+            rightPanelBorder = rightPanel;
             return g;
         }
 
@@ -854,10 +997,18 @@ namespace HugeLauncher.Ui
             stack.Margin = new Thickness(0, 6, 0, 0);
             string[] icons = new string[]
             {
+                // 0 首页
+                "M3.5 10.5 L12 3.5 L20.5 10.5 M6 8.8 L6 20 L18 20 L18 8.8 M10 20 L10 14 L14 14 L14 20",
+                // 1 下载
                 "M12 3 L12 15 M7 10 L12 15 L17 10 M4 20 L20 20",
-                "M12 2 L14.5 4 L17.5 3.5 L18.5 6.5 L21.5 7.5 L21 10.5 L22 12 L21 13.5 L21.5 16.5 L18.5 17.5 L17.5 20.5 L14.5 20 L12 22 L9.5 20 L6.5 20.5 L5.5 17.5 L2.5 16.5 L3 13.5 L2 12 L3 10.5 L2.5 7.5 L5.5 6.5 L6.5 3.5 L9.5 4 Z M12 8 A4 4 0 1 0 12 16 A4 4 0 1 0 12 8",
+                // 2 联机
                 "M8 11 A4 4 0 1 0 8 3 A4 4 0 1 0 8 11 M2 21 L2 19 A6 6 0 0 1 14 19 L14 21 M16 4 A4 4 0 0 1 16 12 M22 21 L22 19 A6 6 0 0 0 18 13",
-                "M12 12 A4 4 0 1 0 12 4 A4 4 0 1 0 12 12 M4 21 L4 19 A4 4 0 0 1 8 15 L16 15 A4 4 0 0 1 20 19 L20 21"
+                // 3 账号
+                "M12 12 A4 4 0 1 0 12 4 A4 4 0 1 0 12 12 M4 21 L4 19 A4 4 0 0 1 8 15 L16 15 A4 4 0 0 1 20 19 L20 21",
+                // 4 设置
+                "M12 2 L14.5 4 L17.5 3.5 L18.5 6.5 L21.5 7.5 L21 10.5 L22 12 L21 13.5 L21.5 16.5 L18.5 17.5 L17.5 20.5 L14.5 20 L12 22 L9.5 20 L6.5 20.5 L5.5 17.5 L2.5 16.5 L3 13.5 L2 12 L3 10.5 L2.5 7.5 L5.5 6.5 L6.5 3.5 L9.5 4 Z M12 8 A4 4 0 1 0 12 16 A4 4 0 1 0 12 8",
+                // 5 更多
+                "M6 11 L6 13 M12 11 L12 13 M18 11 L18 13"
             };
             railLabels = new TextBlock[navGroups.Length];
             railIcons = new Path[navGroups.Length];
@@ -879,6 +1030,15 @@ namespace HugeLauncher.Ui
                 item.Height = 56;
                 item.Cursor = Cursors.Hand;
                 item.Background = Brushes.Transparent;   // 整块 72×56 可点，不再只有文字和描边
+                var railScale = new ScaleTransform(1, 1);
+                item.RenderTransformOrigin = new Point(0.5, 0.5);
+                var railTg = new TransformGroup();
+                railTg.Children.Add(railScale);
+                item.RenderTransform = railTg;
+                HoverMagnet.Attach(item);
+                var railSpring = new Spring(1) { Stiffness = 300, Damping = 14 };
+                item.MouseEnter += delegate { SpringEngine.Go(railSpring, 1.06, delegate(double v, double vel) { railScale.ScaleX = v; railScale.ScaleY = v; }); };
+                item.MouseLeave += delegate { SpringEngine.Go(railSpring, 1.0, delegate(double v, double vel) { railScale.ScaleX = v; railScale.ScaleY = v; }); };
                 var box = new StackPanel();
                 box.HorizontalAlignment = HorizontalAlignment.Center;
                 box.VerticalAlignment = VerticalAlignment.Center;
@@ -1165,16 +1325,19 @@ namespace HugeLauncher.Ui
             Grid.SetRow(steveLayer, 4);
             Grid.SetRowSpan(steveLayer, 3);   // 延伸到气泡/按钮行后面，按钮才能透出史蒂夫
             g.Children.Add(steveLayer);
+            // 史蒂夫宿主：换账号皮肤时整只重建，宿主只负责占位
+            steveHost = new Grid();
+            Grid.SetRow(steveHost, 4);
+            Grid.SetRowSpan(steveHost, 3);
+            g.Children.Add(steveHost);
             // 史蒂夫：填充按钮上方的空区，头跟鼠标转、点击挥臂
-            steveView = new SteveView();
+            steveView = new SteveView(Skins.For(AccountStore.Selected()));
             steveView.Margin = new Thickness(0, 6, 0, 12);   // 只留一点余量：头不碰聊天框即可
             steveView.MirrorImg.Margin = steveView.Margin;
             steveLayer.Children.Add(steveView.MirrorImg);
             // 镜像只是玻璃透镜的取图源：关玻璃时它停在最后一帧，会从透明视口底下透出成「第二个史蒂夫」——必须藏掉
             steveView.MirrorImg.Visibility = Glass.On ? Visibility.Visible : Visibility.Collapsed;
-            Grid.SetRow(steveView, 4);
-            Grid.SetRowSpan(steveView, 3);   // 与 steveLayer 同跨度
-            g.Children.Add(steveView);   // 保持在按钮下层：按钮透出史蒂夫，脚也完整
+            steveHost.Children.Add(steveView);   // 保持在按钮下层：按钮透出史蒂夫，脚也完整
             ThemeManager.GlassChanged += delegate
             {
                 steveView.MirrorImg.Visibility = Glass.On ? Visibility.Visible : Visibility.Collapsed;
@@ -1539,15 +1702,15 @@ namespace HugeLauncher.Ui
             {
                 new NavGroup
                 {
-                    Name = "下载",
-                    Labels = new[] { "原版游戏", "模组", "数据包", "资源包", "光影包", "整合包" },
-                    Keys = new[] { "download:install", "download:mod", "download:datapack", "download:resourcepack", "download:shader", "download:pack" }
+                    Name = "首页",
+                    Labels = new string[0],
+                    Keys = new[] { "home:dashboard" }
                 },
                 new NavGroup
                 {
-                    Name = "设置",
-                    Labels = new[] { "游戏设置", "启动器设置" },
-                    Keys = new[] { "settings:game", "settings:launcher" }
+                    Name = "下载",
+                    Labels = new[] { "原版游戏", "模组", "数据包", "资源包", "光影包", "整合包" },
+                    Keys = new[] { "download:install", "download:mod", "download:datapack", "download:resourcepack", "download:shader", "download:pack" }
                 },
                 new NavGroup
                 {
@@ -1560,6 +1723,18 @@ namespace HugeLauncher.Ui
                     Name = "账号",
                     Labels = new string[0],   // 无二级项：页内三栏自给自足，二级栏整列隐藏
                     Keys = new[] { "account:home" }
+                },
+                new NavGroup
+                {
+                    Name = "设置",
+                    Labels = new[] { "游戏设置", "启动器设置" },
+                    Keys = new[] { "settings:game", "settings:launcher" }
+                },
+                new NavGroup
+                {
+                    Name = "更多",
+                    Labels = new[] { "找乐子", "工具", "关于" },
+                    Keys = new[] { "more:fun", "more:tools", "more:about" }
                 },
             };
 
@@ -1978,6 +2153,10 @@ namespace HugeLauncher.Ui
         {
             switch (key)
             {
+                case "home:dashboard": return new PageHome();
+                case "more:fun": return new PageFun();
+                case "more:tools": return new PageTools();
+                case "more:about": return new PageAbout();
                 case "download:install": return new PageDownloadInstall();
                 case "download:mod": return new PageDownloadMod();
                 case "download:pack": return new PageDownloadPack();
@@ -1995,6 +2174,7 @@ namespace HugeLauncher.Ui
                 case "account:home": return new PageAccount();
                 case "settings:game": return new SettingsGamePanel(cfg);
                 case "settings:launcher": return new SettingsLauncherPanel(cfg);
+                case "settings:migrate": return new PageMigrate();
                 case "server:oneclick": return new PageServerOneClick();
                 case "server:hall": return new PageServerHall();
                 case "server:list": return new PageServerLobby();
@@ -2416,7 +2596,8 @@ namespace HugeLauncher.Ui
         void OnLoaded(object sender, RoutedEventArgs e)
         {
             RefreshVersionText();
-            Navigate("download:install");
+            string startPage = Environment.GetEnvironmentVariable("HIL_START_PAGE");
+            Navigate(string.IsNullOrEmpty(startPage) ? "home:dashboard" : startPage);
             FloatBall.Sync(cfg);   // 启动=全窗模式，不出球；注册配置备用
             // 液态玻璃活底：启动逐帧对齐循环（幂等；不再需要截屏/去抖/排除注册）
             Glass.Init(rootBorder);
@@ -2817,6 +2998,25 @@ namespace HugeLauncher.Ui
                 userCombo.Text = sel != null ? sel.Name : keep;
             }
             finally { refreshingAccounts = false; }
+        }
+
+        // 换账号 / 皮肤下载完成：整只重建侧栏史蒂夫（离线或取不到皮肤就用默认）
+        void RefreshSteve()
+        {
+            if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(new Action(RefreshSteve)); return; }
+            if (steveHost == null) return;
+            var skin = Skins.For(AccountStore.Selected());
+            var v = new SteveView(skin);
+            v.Margin = new Thickness(0, 6, 0, 12);
+            v.MirrorImg.Margin = v.Margin;
+            v.MirrorImg.Visibility = Glass.On ? Visibility.Visible : Visibility.Collapsed;
+            steveHost.Children.Clear();
+            steveHost.Children.Add(v);
+            steveView = v;
+            SteveDirector.Steve = v;
+            steveLayer.Children.Clear();
+            steveLayer.Children.Add(v.MirrorImg);
+            if (Glass.On) v.RefreshMirror();
         }
     }
 }

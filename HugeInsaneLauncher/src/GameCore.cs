@@ -14,7 +14,7 @@ namespace HugeLauncher
         public const string RuntimeListUrl = "https://launchermeta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json";
         public const string AssetBase = "https://resources.download.minecraft.net/";
 
-        public class VersionEntry { public string Id, Type, Url; }
+        public class VersionEntry { public string Id, Type, Url, ReleaseTime; }
 
         // ---------- BMCLAPI 镜像（国内提速，官方源兜底；两端点均实测支持 Range 206） ----------
 
@@ -74,7 +74,13 @@ namespace HugeLauncher
             foreach (var o in Json.Arr(m["versions"]))
             {
                 var v = Json.Obj(o);
-                list.Add(new VersionEntry { Id = Json.Str(v, "id"), Type = Json.Str(v, "type"), Url = Json.Str(v, "url") });
+                list.Add(new VersionEntry
+                {
+                    Id = Json.Str(v, "id"),
+                    Type = Json.Str(v, "type"),
+                    Url = Json.Str(v, "url"),
+                    ReleaseTime = Json.Str(v, "releaseTime")
+                });
             }
             return list;
         }

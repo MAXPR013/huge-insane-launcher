@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using HugeLauncher.Ai;
+using HugeLauncher.Ui.Pages;
 
 namespace HugeLauncher.Ui
 {
@@ -204,6 +205,23 @@ namespace HugeLauncher.Ui
         public SettingsGamePanel(Config c)
             : base(c)
         {
+            // ===== 瓷砖零：游戏目录 / 迁移 =====
+            var tileDir = AddTile("游戏目录");
+            var dirText = new TextBlock();
+            dirText.Text = Paths.McDir;
+            dirText.FontSize = 12;
+            dirText.Margin = new Thickness(0, 2, 0, 8);
+            dirText.TextWrapping = TextWrapping.Wrap;
+            dirText.Foreground = Palette.B(Palette.Dim);
+            tileDir.Children.Add(dirText);
+            var migBtn = new FlatButton("从其他启动器迁移…");
+            migBtn.SetFontSize(12);
+            migBtn.SetPadding(new Thickness(14, 5, 14, 5));
+            migBtn.SetCornerRadius(new CornerRadius(6));
+            migBtn.HorizontalAlignment = HorizontalAlignment.Left;
+            migBtn.Click += delegate { Navigator.Go("settings:migrate"); };
+            tileDir.Children.Add(migBtn);
+
             // ===== 瓷砖一：性能 =====
             var tilePerf = AddTile("性能");
             var lblMem = MakeLabel("内存分配", "setup:memory");

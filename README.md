@@ -6,9 +6,9 @@
 
 - **单文件 WPF Minecraft 启动器**：C# 4.0 / .NET Framework 4.x，无第三方 NuGet 依赖，全部静态链接进一个 exe。
 - 命名史：HugeLauncher → Huge Going Launcher (HGL) → **Huge Insane Launcher (HIL，现名，别再改)**。
-- 当前版本 **26.8.14**。产物 = 根目录 `HugeInsaneLauncher.exe`。
+- 当前版本 **26.12.0 Alpha**。产物 = 根目录 `HugeInsaneLauncher.exe`（约 3.2MB，内嵌种子地图内核、物品贴图与方块模型）。
 - 运行布局：exe 放哪，就在哪自动生成 `.minecraft/`（游戏文件）和 `HugeInsaneLauncher/`（配置目录）——所以"一个 exe 就是一个启动器"。
-- 核心功能：离线模式用户名登录、原版/Forge/NeoForge/Fabric 版本下载（重复下载目录名加 `#` 区分）、模组/资源包/光影/整合包四大下载源（带搜索）、内存/优先级/动画/配色设置、联机、H史 AI 聊天、史蒂夫 3D 看板 + 史莱姆背景、液态玻璃 UI。
+- 核心功能：离线模式用户名登录、原版/Forge/NeoForge/Fabric 版本下载（重复下载目录名加 `#` 区分）、模组/资源包/光影/整合包四大下载源（带搜索）、内存/优先级/动画/配色设置、联机、H史 AI 聊天、史蒂夫双层 3D 看板 + 史莱姆背景、液态玻璃 UI、首页/找乐子小部件面板、种子地图、合成查询（3×3 + 游戏贴图/方块模型图标）、账号页、迁移向导、新手引导。
 
 ## 目录地图（2026-08-29 整理后）
 

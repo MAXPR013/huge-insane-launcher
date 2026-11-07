@@ -76,7 +76,10 @@ namespace HugeLauncher.Ui
         bool mirrorDirty = true;        // 有待上屏的姿态（静止时补一张最终帧）
         int lastMirrorMs;
 
-        public SteveView()
+        public SteveView() : this(null) { }
+
+        // 传入自定义皮肤（账号皮肤）；null = 默认史蒂夫
+        public SteveView(BitmapSource customSkin)
         {
             ClipToBounds = true;
             viewport = new Viewport3D();
@@ -90,70 +93,67 @@ namespace HugeLauncher.Ui
                 new Point3D(0, 14, 58), new Vector3D(0, 0, -1), new Vector3D(0, 1, 0), 33);
             viewport.Camera = camera;
 
-            var skin = LoadSkin();
-            // 两份图集两个材质：基础层强制不透明（opaque 队列先画），帽子层 alpha 二值化
-            // （transparent 队列后画）。共用一份带 alpha 的材质会把整个模型拖进透明队列，
-            // 帽子盒先画写深度、后面的头被剔除——就是"边框后面变透明"的元凶（MC：基础层不透明、帽层 cutout）
-            var mat = MakeMaterial(MakeAtlas(skin, false));
-            // 皮肤没有帽子层就不建帽子盒：全透盒子也进透明队列，深度/混合一乱就是"透明壳"
-            bool hasHat = HasHatLayer(skin);
-            var matHat = hasHat ? MakeMaterial(MakeAtlas(skin, true)) : null;
+            var raw = customSkin ?? LoadSkin();
+            int sw = raw.PixelWidth, sh = raw.PixelHeight;
+            var px = new byte[sw * sh * 4];
+            new FormatConvertedBitmap(raw, PixelFormats.Bgra32, null, 0).CopyPixels(px, sw * 4, 0);
+
+            // v8（三位审查员一致通过）：
+            //   1. 基础层与第二层都按 alpha>=26 做几何 cutout——WPF 3D 没有 alpha test，
+            //      带透明像素的面照样写深度，会把后面的部件裁掉（「透明罩」）
+            //   2. 图集放大 4 倍（64→256 / 128→512，都是 POT），每个 texel 的 4×4 全填自己颜色；
+            //      透明 texel 用最近邻色膨胀，连 mip3 都不会渗到黑
+            //   3. 面片 UV 只取 texel 中心 1/4，双线性采样永远落在自己颜色里，边界不可能渗色
+            //   4. 每个四边形 4 顶点落在四角，相邻面片位置重合但索引分开、UV 独立
+            //      （共享索引会强制 UV 二选一，反而制造混色缝）
+            //   5. 两层都双面（BackMaterial），等价 MC 的 entityCutoutNoCull——
+            //      仰视时帽底/袖口/裤脚的内壁环带才不会透出背景
+            var op = OpaqueMask(px, sw * sh);
+            var mat = MakeMaterial(BuildPaddedAtlas(px, sw, sh, op));
+            bool legacy32 = sh <= 32;   // 64×32：没有外套/袖/裤层，左肢复用右肢贴图
+            bool noOverlay = Environment.GetEnvironmentVariable("HIL_SKIN_NO_OVERLAY") == "1";
 
             var root = new Model3DGroup();
-            root.Children.Add(new AmbientLight(Color.FromRgb(0xB2, 0xB2, 0xB2)));
-            root.Children.Add(new DirectionalLight(Color.FromRgb(0x72, 0x72, 0x72), new Vector3D(0.4, -0.55, -0.75)));
+            // Ambient 调亮：双面后内壁只吃环境光（已知简化，见方案），太暗会被误判成黑面
+            root.Children.Add(new AmbientLight(Color.FromRgb(0xC6, 0xC6, 0xC6)));
+            root.Children.Add(new DirectionalLight(Color.FromRgb(0x6E, 0x6E, 0x6E), new Vector3D(0.4, -0.55, -0.75)));
 
-            bool slim32 = skin.PixelHeight == 32;   // 老版 64x32 皮肤：左肢复用右肢贴图
-
-            // 头（不透明）与帽子层（透明 cutout）拆成两个模型，渲染队列天然保证头先画
+            // 头 + 帽子（帽子外扩 0.5，MC 的 hat 层）
             var headXform = new Transform3DGroup();
             headXform.Children.Add(new RotateTransform3D(headPitch));
             headXform.Children.Add(new RotateTransform3D(headYaw));
             headXform.Children.Add(new TranslateTransform3D(0, 24, 0)); // 颈部枢轴
-            var headMesh = new MeshGeometry3D();
-            BuildBox(headMesh, 0, 4, 0, 8, 8, 8, 0, 0, 8, 8, 8);      // 头（相对颈部枢轴）
-            var headModel = new GeometryModel3D(headMesh, mat);
-            headModel.Transform = headXform;
             var headGroup = new Model3DGroup();
-            headGroup.Children.Add(headModel);
-            if (hasHat)
-            {
-                var hatMesh = new MeshGeometry3D();
-                BuildBox(hatMesh, 0, 4, 0, 9, 9, 9, 32, 0, 8, 8, 8);      // 帽子层（大 0.5）
-                var hatModel = new GeometryModel3D(hatMesh, matHat);
-                hatModel.Transform = headXform;
-                headGroup.Children.Add(hatModel);
-            }
+            headGroup.Children.Add(PartModel(px, op, sw, sh, 0, 0, 8, 8, 8, 32, 0, 0.5,
+                0, 4, 0, 8, 8, 8, headXform, mat, noOverlay));      // 相对颈部枢轴
 
             // 右臂（模型右手 = 屏幕左侧，MC 左键挥的就是它），绕肩膀枢轴摆动
-            var armMesh = new MeshGeometry3D();
-            BuildBox(armMesh, 0, -5, 0, 4, 12, 4, 40, 16, 4, 12, 4);   // 相对肩膀枢轴
-            var armModel = new GeometryModel3D(armMesh, mat);
             var armXform = new Transform3DGroup();
             armXform.Children.Add(new RotateTransform3D(armRoll));     // MC 旋转应用顺序 Z→Y→X
             armXform.Children.Add(new RotateTransform3D(armYaw));
             armXform.Children.Add(new RotateTransform3D(armSwing));
             armXform.Children.Add(new TranslateTransform3D(-6, 23, 0)); // 肩膀枢轴
-            armModel.Transform = armXform;
+            var armModel = PartModel(px, op, sw, sh, 40, 16, 4, 12, 4, 40, 32, 0.25,
+                0, -5, 0, 4, 12, 4, armXform, mat, noOverlay);      // 相对肩膀枢轴
 
             // 部件全部独立：躯干/左臂/双腿。MC 挥臂时只有躯干+双臂参与扭转
             // （肩膀枢轴随身体轴心公转，手臂不是独自绕肩空转），腿和头不扭
-            var torsoMesh = new MeshGeometry3D();
-            BuildBox(torsoMesh, 0, 18, 0, 8, 12, 4, 16, 16, 8, 12, 4);  // 躯干
-            var torsoModel = new GeometryModel3D(torsoMesh, mat);
+            var torsoModel = PartModel(px, op, sw, sh, 16, 16, 8, 12, 4, 16, 32, 0.25,
+                0, 18, 0, 8, 12, 4, null, mat, noOverlay || legacy32);
 
-            var leftArmMesh = new MeshGeometry3D();
-            BuildBox(leftArmMesh, 0, -5, 0, 4, 12, 4, slim32 ? 40 : 32, slim32 ? 16 : 48, 4, 12, 4); // 相对肩膀枢轴
-            var leftArmModel = new GeometryModel3D(leftArmMesh, mat);
             var leftArmXform = new Transform3DGroup();
             leftArmXform.Children.Add(new RotateTransform3D(leftArmPitch));
             leftArmXform.Children.Add(new TranslateTransform3D(6, 23, 0)); // 左肩枢轴
-            leftArmModel.Transform = leftArmXform;
+            var leftArmModel = PartModel(px, op, sw, sh,
+                legacy32 ? 40 : 32, legacy32 ? 16 : 48, 4, 12, 4, 48, 48, 0.25,
+                0, -5, 0, 4, 12, 4, leftArmXform, mat, noOverlay || legacy32);
 
-            var legMesh = new MeshGeometry3D();
-            BuildBox(legMesh, -2, 6, 0, 4, 12, 4, 0, 16, 4, 12, 4);      // 右腿
-            BuildBox(legMesh, 2, 6, 0, 4, 12, 4, slim32 ? 0 : 16, slim32 ? 16 : 48, 4, 12, 4);    // 左腿
-            var legModel = new GeometryModel3D(legMesh, mat);
+            var legs = new Model3DGroup();
+            legs.Children.Add(PartModel(px, op, sw, sh, 0, 16, 4, 12, 4, 0, 32, 0.25,
+                -2, 6, 0, 4, 12, 4, null, mat, noOverlay || legacy32));
+            legs.Children.Add(PartModel(px, op, sw, sh,
+                legacy32 ? 0 : 16, legacy32 ? 16 : 48, 4, 12, 4, 16, 48, 0.25,
+                2, 6, 0, 4, 12, 4, null, mat, noOverlay || legacy32));
 
             // 层级（对齐 MC）：modelYaw 转整个模型 → bodyTwist 只扭躯干+双臂
             var twistGroup = new Model3DGroup();
@@ -165,7 +165,7 @@ namespace HugeLauncher.Ui
             var modelCore = new Model3DGroup();
             modelCore.Children.Add(headGroup);
             modelCore.Children.Add(twistGroup);
-            modelCore.Children.Add(legModel);
+            modelCore.Children.Add(legs);
             modelCore.Transform = new RotateTransform3D(modelYaw);
 
             root.Children.Add(modelCore);
@@ -366,51 +366,137 @@ namespace HugeLauncher.Ui
             return v < lo ? lo : (v > hi ? hi : v);
         }
 
-        // ---------- 3D 建模：一个带 MC 皮肤 UV 的立方体 ----------
+        // ---------- 3D 建模：逐像素 cutout 的 MC 皮肤盒 ----------
 
-        // 皮肤贴图放大倍数（最近邻），UV 以放大后的像素计
-        const int SkinScale = 8;
+        // 图集放大倍数：64 → 256、128 → 512（都是 2 的幂，mip 友好）。
+        // 每个 texel 占 scale×scale 的方块，面片 UV 只取方块中心 —— 双线性采样永远落在
+        // 自己颜色里，边界不可能混到邻格（这是「暗缝/黑边」的根治点）。
+        const int TexScale = 4;
 
-        // 在 (cx,cy,cz) 处放一个尺寸 (sx,sy,sz) 的立方体；
-        // (tx,ty) 是 MC 皮肤布局里该盒子的贴图原点，(w,h,d) 是皮肤用的盒子尺寸
-        static void BuildBox(MeshGeometry3D m, double cx, double cy, double cz,
-                             double sx, double sy, double sz,
-                             int tx, int ty, int w, int h, int d)
+        // 一个部件 = 基础层盒 + 可选第二层盒（外扩），两层共用同一张图集与材质
+        static GeometryModel3D PartModel(byte[] px, bool[] op, int sw, int sh,
+                                         int bx, int by, int bw, int bh, int bd,
+                                         int ox, int oy, double inflate,
+                                         double cx, double cy, double cz,
+                                         double sx, double sy, double sz,
+                                         Transform3D xf, Material mat, bool noOverlay)
+        {
+            var m = new MeshGeometry3D();
+            AddBoxQuads(m, op, sw, sh, bx, by, bw, bh, bd, cx, cy, cz, sx, sy, sz);
+            if (!noOverlay && ox >= 0 && oy >= 0 && sh > 32)
+                AddBoxQuads(m, op, sw, sh, ox, oy, bw, bh, bd,
+                    cx, cy, cz, sx + inflate * 2, sy + inflate * 2, sz + inflate * 2);
+            m.Freeze();
+            var model = new GeometryModel3D(m, mat);
+            // 双面：等价 MC 的 entityCutoutNoCull（仰视时帽底/袖口/裤脚不会透背景）
+            model.BackMaterial = mat;
+            if (xf != null) model.Transform = xf;
+            // 注意：不能 Freeze() 模型——它带着随动画变化的 RotateTransform3D，
+            // 冻结后 OnRendering 再写角度会抛「对象处于只读状态」
+            return model;
+        }
+
+        // 六个面各自按 texel 铺四边形（只有不透明像素才铺）
+        static void AddBoxQuads(MeshGeometry3D m, bool[] op, int sw, int sh,
+                                int tx, int ty, int w, int h, int d,
+                                double cx, double cy, double cz,
+                                double sx, double sy, double sz)
+        {
+            Point3D tl, tr, br, bl;
+            FaceCorners(0, cx, cy, cz, sx, sy, sz, out tl, out tr, out br, out bl);
+            AddFaceQuads(m, op, sw, sh, tl, tr, br, bl, tx + d, ty + d, w, h);              // 前
+            FaceCorners(1, cx, cy, cz, sx, sy, sz, out tl, out tr, out br, out bl);
+            AddFaceQuads(m, op, sw, sh, tl, tr, br, bl, tx + 2 * d + w, ty + d, w, h);      // 后
+            FaceCorners(2, cx, cy, cz, sx, sy, sz, out tl, out tr, out br, out bl);
+            AddFaceQuads(m, op, sw, sh, tl, tr, br, bl, tx, ty + d, d, h);                  // 右外侧
+            FaceCorners(3, cx, cy, cz, sx, sy, sz, out tl, out tr, out br, out bl);
+            AddFaceQuads(m, op, sw, sh, tl, tr, br, bl, tx + d + w, ty + d, d, h);          // 左外侧
+            FaceCorners(4, cx, cy, cz, sx, sy, sz, out tl, out tr, out br, out bl);
+            AddFaceQuads(m, op, sw, sh, tl, tr, br, bl, tx + d, ty, w, d);                  // 顶
+            FaceCorners(5, cx, cy, cz, sx, sy, sz, out tl, out tr, out br, out bl);
+            AddFaceQuads(m, op, sw, sh, tl, tr, br, bl, tx + d + w, ty, w, d);              // 底
+        }
+
+        // MC 皮肤盒六面的四角（从外侧看 TL→TR→BR→BL）
+        static void FaceCorners(int face, double cx, double cy, double cz,
+                                double sx, double sy, double sz,
+                                out Point3D tl, out Point3D tr, out Point3D br, out Point3D bl)
         {
             double hx = sx / 2, hy = sy / 2, hz = sz / 2;
-            // MC 皮肤盒 UV 布局（front/back/west/east/top/bottom 各自取一块）
-            Face(m, P(cx - hx, cy + hy, cz + hz), P(cx + hx, cy + hy, cz + hz), P(cx + hx, cy - hy, cz + hz), P(cx - hx, cy - hy, cz + hz), tx + d, ty + d, w, h);          // 前
-            Face(m, P(cx + hx, cy + hy, cz - hz), P(cx - hx, cy + hy, cz - hz), P(cx - hx, cy - hy, cz - hz), P(cx + hx, cy - hy, cz - hz), tx + 2 * d + w, ty + d, w, h); // 后
-            Face(m, P(cx - hx, cy + hy, cz - hz), P(cx - hx, cy + hy, cz + hz), P(cx - hx, cy - hy, cz + hz), P(cx - hx, cy - hy, cz - hz), tx, ty + d, d, h);             // 右外侧
-            Face(m, P(cx + hx, cy + hy, cz + hz), P(cx + hx, cy + hy, cz - hz), P(cx + hx, cy - hy, cz - hz), P(cx + hx, cy - hy, cz + hz), tx + d + w, ty + d, d, h);     // 左外侧
-            Face(m, P(cx - hx, cy + hy, cz - hz), P(cx + hx, cy + hy, cz - hz), P(cx + hx, cy + hy, cz + hz), P(cx - hx, cy + hy, cz + hz), tx + d, ty, w, d);             // 顶
-            Face(m, P(cx - hx, cy - hy, cz + hz), P(cx + hx, cy - hy, cz + hz), P(cx + hx, cy - hy, cz - hz), P(cx - hx, cy - hy, cz - hz), tx + d + w, ty, w, d);         // 底
+            switch (face)
+            {
+                case 0: // 前
+                    tl = P(cx - hx, cy + hy, cz + hz); tr = P(cx + hx, cy + hy, cz + hz);
+                    br = P(cx + hx, cy - hy, cz + hz); bl = P(cx - hx, cy - hy, cz + hz); break;
+                case 1: // 后
+                    tl = P(cx + hx, cy + hy, cz - hz); tr = P(cx - hx, cy + hy, cz - hz);
+                    br = P(cx - hx, cy - hy, cz - hz); bl = P(cx + hx, cy - hy, cz - hz); break;
+                case 2: // 右外侧
+                    tl = P(cx - hx, cy + hy, cz - hz); tr = P(cx - hx, cy + hy, cz + hz);
+                    br = P(cx - hx, cy - hy, cz + hz); bl = P(cx - hx, cy - hy, cz - hz); break;
+                case 3: // 左外侧
+                    tl = P(cx + hx, cy + hy, cz + hz); tr = P(cx + hx, cy + hy, cz - hz);
+                    br = P(cx + hx, cy - hy, cz - hz); bl = P(cx + hx, cy - hy, cz + hz); break;
+                case 4: // 顶
+                    tl = P(cx - hx, cy + hy, cz - hz); tr = P(cx + hx, cy + hy, cz - hz);
+                    br = P(cx + hx, cy + hy, cz + hz); bl = P(cx - hx, cy + hy, cz + hz); break;
+                default: // 底
+                    tl = P(cx - hx, cy - hy, cz + hz); tr = P(cx + hx, cy - hy, cz + hz);
+                    br = P(cx + hx, cy - hy, cz - hz); bl = P(cx - hx, cy - hy, cz - hz); break;
+            }
         }
 
         static Point3D P(double x, double y, double z) { return new Point3D(x, y, z); }
 
-        // 一个四边面：tl/tr/br/bl 为从外侧看的四角；(u,v,w,h) 为皮肤像素矩形（未放大）
-        static void Face(MeshGeometry3D m, Point3D tl, Point3D tr, Point3D br, Point3D bl,
-                         double u, double v, double w, double h)
+        // 把一个面按 texel 切开：不透明像素各生成一个 1×1 四边形。
+        // 相邻四边形位置重合但顶点/索引完全独立——共享索引会强制 UV 二选一，反而生出混色缝。
+        static void AddFaceQuads(MeshGeometry3D m, bool[] op, int sw, int sh,
+                                 Point3D tl, Point3D tr, Point3D br, Point3D bl,
+                                 int u, int v, int fw, int fh)
         {
-            int i0 = m.Positions.Count;
-            m.Positions.Add(tl); m.Positions.Add(tr); m.Positions.Add(br); m.Positions.Add(bl);
-            // 法线 = (bl-tl) × (tr-tl)（外法线）
-            var n = Vector3D.CrossProduct(bl - tl, tr - tl);
-            n.Normalize();
-            for (int i = 0; i < 4; i++) m.Normals.Add(n);
-            // UV：贴图向内收 1 个放大像素，防止边缘渗色
-            double texW = 64.0 * SkinScale, texH = 64.0 * SkinScale;
-            double u0 = (u * SkinScale + 1) / texW, u1 = ((u + w) * SkinScale - 1) / texW;
-            double v0 = (v * SkinScale + 1) / texH, v1 = ((v + h) * SkinScale - 1) / texH;
-            // WPF 3D 纹理坐标 (0,0)=图像左上角（整图四边形测试实证），皮肤行号直接使用
-            m.TextureCoordinates.Add(new Point(u0, v0));
-            m.TextureCoordinates.Add(new Point(u1, v0));
-            m.TextureCoordinates.Add(new Point(u1, v1));
-            m.TextureCoordinates.Add(new Point(u0, v1));
-            // 从外侧看逆时针为正面：TL→BL→BR 与 TL→BR→TR
-            m.TriangleIndices.Add(i0 + 0); m.TriangleIndices.Add(i0 + 3); m.TriangleIndices.Add(i0 + 2);
-            m.TriangleIndices.Add(i0 + 0); m.TriangleIndices.Add(i0 + 2); m.TriangleIndices.Add(i0 + 1);
+            double texW = sw * (double)TexScale, texH = sh * (double)TexScale;
+            for (int j = 0; j < fh; j++)
+            {
+                int ty = v + j;
+                if (ty < 0 || ty >= sh) continue;
+                for (int i = 0; i < fw; i++)
+                {
+                    int tx = u + i;
+                    if (tx < 0 || tx >= sw) continue;
+                    if (!op[ty * sw + tx]) continue;
+                    double fx0 = (double)i / fw, fx1 = (double)(i + 1) / fw;
+                    double fy0 = (double)j / fh, fy1 = (double)(j + 1) / fh;
+                    Point3D q00 = LerpFace(tl, tr, br, bl, fx0, fy0);
+                    Point3D q10 = LerpFace(tl, tr, br, bl, fx1, fy0);
+                    Point3D q11 = LerpFace(tl, tr, br, bl, fx1, fy1);
+                    Point3D q01 = LerpFace(tl, tr, br, bl, fx0, fy1);
+                    int i0 = m.Positions.Count;
+                    m.Positions.Add(q00); m.Positions.Add(q10); m.Positions.Add(q11); m.Positions.Add(q01);
+                    var n = Vector3D.CrossProduct(q01 - q00, q10 - q00);
+                    n.Normalize();
+                    for (int k = 0; k < 4; k++) m.Normals.Add(n);
+                    // 只取该 texel 中心 1/4：4×4 块的第 1/4..3/4 段
+                    double u0 = (tx * (double)TexScale + TexScale * 0.25) / texW;
+                    double u1 = (tx * (double)TexScale + TexScale * 0.75) / texW;
+                    double v0 = (ty * (double)TexScale + TexScale * 0.25) / texH;
+                    double v1 = (ty * (double)TexScale + TexScale * 0.75) / texH;
+                    m.TextureCoordinates.Add(new Point(u0, v0));
+                    m.TextureCoordinates.Add(new Point(u1, v0));
+                    m.TextureCoordinates.Add(new Point(u1, v1));
+                    m.TextureCoordinates.Add(new Point(u0, v1));
+                    // 从外侧看逆时针为正面：TL→BL→BR 与 TL→BR→TR
+                    m.TriangleIndices.Add(i0 + 0); m.TriangleIndices.Add(i0 + 3); m.TriangleIndices.Add(i0 + 2);
+                    m.TriangleIndices.Add(i0 + 0); m.TriangleIndices.Add(i0 + 2); m.TriangleIndices.Add(i0 + 1);
+                }
+            }
+        }
+
+        static Point3D LerpFace(Point3D tl, Point3D tr, Point3D br, Point3D bl, double fx, double fy)
+        {
+            double x = (1 - fx) * (1 - fy) * tl.X + fx * (1 - fy) * tr.X + fx * fy * br.X + (1 - fx) * fy * bl.X;
+            double y = (1 - fx) * (1 - fy) * tl.Y + fx * (1 - fy) * tr.Y + fx * fy * br.Y + (1 - fx) * fy * bl.Y;
+            double z = (1 - fx) * (1 - fy) * tl.Z + fx * (1 - fy) * tr.Z + fx * fy * br.Z + (1 - fx) * fy * bl.Z;
+            return new Point3D(x, y, z);
         }
 
         // ---------- 皮肤加载与处理 ----------
@@ -520,111 +606,77 @@ namespace HugeLauncher.Ui
             return m;
         }
 
-        // 皮肤有没有帽子层：(32,0)-(56,16) 区域存在 alpha≥128 的像素才算。
-        // 没有就不建帽子盒——全透盒子也会进透明渲染队列参与深度/混合，就是"透明壳"的来源
-        static bool HasHatLayer(BitmapSource skin)
+        // ---------- 皮肤 → 图集 ----------
+
+        // 阈值 26（≈ MC 的 alpha>0.1）；「有没有像素」和「建不建几何」必须同一个阈值
+        const byte AlphaCut = 26;
+
+        static bool[] OpaqueMask(byte[] px, int count)
         {
-            if (skin.PixelWidth < 56 || skin.PixelHeight < 16) return false;
-            var bgra = new FormatConvertedBitmap(skin, PixelFormats.Bgra32, null, 0);
-            int w = bgra.PixelWidth;
-            var px = new byte[w * bgra.PixelHeight * 4];
-            bgra.CopyPixels(px, w * 4, 0);
-            for (int y = 0; y < 16; y++)
-                for (int x = 32; x < 56; x++)
-                    if (px[(y * w + x) * 4 + 3] >= 128) return true;
-            return false;
+            var op = new bool[count];
+            for (int i = 0; i < count; i++) op[i] = px[i * 4 + 3] >= AlphaCut;
+            return op;
         }
 
-        // 皮肤预处理：hatLayer=false → 所有像素 alpha=255 并转成无 alpha 的 Bgr24
-        // （基础层，MC 本就不透明渲染；无 alpha 通道 WPF 才会把它归到 opaque 队列）；
-        // hatLayer=true → 只保留帽子盒 UV 区 (32,0)-(56,16)（顶/底行 + 四个侧面行），
-        // alpha 二值化（<128 全透，否则不透明），其余全透。
-        // 写 alpha 前先做 16 轮颜色洪泛：把不透明像素的 RGB 扩散进相邻透明像素——
-        // 透明像素的 RGB 是脏数据（常为纯黑/白），不扩散的话边缘采样会把脏色带出来
-        static BitmapSource MakeAtlas(BitmapSource skin, bool hatLayer)
+        // 4 倍图集：每个 texel 扩成 TexScale×TexScale 并填自己的颜色；透明 texel 用最近的不透明
+        // 像素颜色膨胀（BFS 一圈圈扩散）。这样即使缩到 mip3，双线性也不会采到黑色——
+        // 暗缝/黑边的根就在这里。
+        static BitmapSource BuildPaddedAtlas(byte[] px, int sw, int sh, bool[] op)
         {
-            int w = skin.PixelWidth, h = skin.PixelHeight;
-            var bgra = new FormatConvertedBitmap(skin, PixelFormats.Bgra32, null, 0);
-            byte[] px = new byte[w * h * 4];
-            bgra.CopyPixels(px, w * 4, 0);
-            var opaque = new bool[w * h];
-            for (int y = 0; y < h; y++)
+            int n = sw * sh;
+            var rgb = new byte[n * 3];
+            var done = new bool[n];
+            var queue = new Queue<int>();
+            for (int i = 0; i < n; i++)
             {
-                for (int x = 0; x < w; x++)
+                if (!op[i]) continue;
+                rgb[i * 3] = px[i * 4]; rgb[i * 3 + 1] = px[i * 4 + 1]; rgb[i * 3 + 2] = px[i * 4 + 2];
+                done[i] = true;
+                queue.Enqueue(i);
+            }
+            while (queue.Count > 0)
+            {
+                int i = queue.Dequeue();
+                int x = i % sw, y = i / sw;
+                for (int k = 0; k < 4; k++)
                 {
-                    int i = y * w + x;
-                    if (hatLayer)
-                    {
-                        bool inHat = x >= 32 && x < 56 && y < 16;
-                        opaque[i] = inHat && px[i * 4 + 3] >= 128;
-                    }
-                    else opaque[i] = px[i * 4 + 3] > 0;
+                    int nx = x + (k == 0 ? -1 : (k == 1 ? 1 : 0));
+                    int ny = y + (k == 2 ? -1 : (k == 3 ? 1 : 0));
+                    if (nx < 0 || ny < 0 || nx >= sw || ny >= sh) continue;
+                    int j = ny * sw + nx;
+                    if (done[j]) continue;
+                    rgb[j * 3] = rgb[i * 3]; rgb[j * 3 + 1] = rgb[i * 3 + 1]; rgb[j * 3 + 2] = rgb[i * 3 + 2];
+                    done[j] = true;
+                    queue.Enqueue(j);
                 }
             }
-            var filled = (bool[])opaque.Clone();
-            for (int round = 0; round < 16; round++)
+            int s = TexScale, aw = sw * s, ah = sh * s;
+            var dst = new byte[aw * ah * 4];
+            for (int y = 0; y < sh; y++)
             {
-                var todo = new List<int>();
-                for (int y = 0; y < h; y++)
+                for (int x = 0; x < sw; x++)
                 {
-                    for (int x = 0; x < w; x++)
+                    int si = (y * sw + x) * 3;
+                    // 注意字节序：源是 Bgra32，rgb[] 里存的顺序是 B,G,R——写回时也必须 B,G,R
+                    byte b = rgb[si], g = rgb[si + 1], r = rgb[si + 2];
+                    for (int dy = 0; dy < s; dy++)
                     {
-                        int i = y * w + x;
-                        if (filled[i]) continue;
-                        int from = -1;
-                        if (x > 0 && filled[i - 1]) from = i - 1;
-                        else if (x < w - 1 && filled[i + 1]) from = i + 1;
-                        else if (y > 0 && filled[i - w]) from = i - w;
-                        else if (y < h - 1 && filled[i + w]) from = i + w;
-                        if (from < 0) continue;
-                        px[i * 4] = px[from * 4];
-                        px[i * 4 + 1] = px[from * 4 + 1];
-                        px[i * 4 + 2] = px[from * 4 + 2];
-                        todo.Add(i);
+                        int row = ((y * s + dy) * aw + x * s) * 4;
+                        for (int dx = 0; dx < s; dx++)
+                        {
+                            dst[row + dx * 4] = b;
+                            dst[row + dx * 4 + 1] = g;
+                            dst[row + dx * 4 + 2] = r;
+                            dst[row + dx * 4 + 3] = 255;
+                        }
                     }
                 }
-                if (todo.Count == 0) break;
-                foreach (var i in todo) filled[i] = true;
             }
-            for (int i = 0; i < w * h; i++)
-                px[i * 4 + 3] = hatLayer ? (opaque[i] ? (byte)255 : (byte)0) : (byte)255;
-            var src = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, px, w * 4);
-            src.Freeze();
-            var up = Upscale8(src);
-            if (hatLayer) return up;
-            var flat = new FormatConvertedBitmap(up, PixelFormats.Bgr24, null, 0);
+            var bmp = BitmapSource.Create(aw, ah, 96, 96, PixelFormats.Bgra32, null, dst, aw * 4);
+            bmp.Freeze();
+            var flat = new FormatConvertedBitmap(bmp, PixelFormats.Bgr24, null, 0);
             flat.Freeze();
             return flat;
-        }
-
-        // 最近邻放大 8 倍：3D 采样默认双线性会糊，放大后接近像素风
-        // （用 System.Drawing 做真正的最近邻放大，WPF 的 BitmapScalingMode 在这里靠不住）
-        static BitmapSource Upscale8(BitmapSource skin)
-        {
-            int w = skin.PixelWidth, h = skin.PixelHeight;
-            // BitmapSource → System.Drawing.Bitmap（先统一转成 Bgra32，字节序与 Format32bppArgb 一致）
-            var bgra = new FormatConvertedBitmap(skin, PixelFormats.Bgra32, null, 0);
-            var src = new System.Drawing.Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-            var data = src.LockBits(new System.Drawing.Rectangle(0, 0, w, h),
-                System.Drawing.Imaging.ImageLockMode.WriteOnly, src.PixelFormat);
-            bgra.CopyPixels(Int32Rect.Empty, data.Scan0, data.Height * data.Stride, data.Stride);
-            src.UnlockBits(data);
-            // 最近邻放大
-            var dst = new System.Drawing.Bitmap(w * SkinScale, h * SkinScale, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-            using (var g = System.Drawing.Graphics.FromImage(dst))
-            {
-                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
-                g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
-                g.DrawImage(src, new System.Drawing.Rectangle(0, 0, dst.Width, dst.Height),
-                    new System.Drawing.Rectangle(0, 0, w, h), System.Drawing.GraphicsUnit.Pixel);
-            }
-            src.Dispose();
-            using (var ms = new MemoryStream())
-            {
-                dst.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                dst.Dispose();
-                return LoadPng(ms.ToArray());
-            }
         }
 
         // 兜底：代码画一个经典史蒂夫配色（拿不到 jar 时用）
