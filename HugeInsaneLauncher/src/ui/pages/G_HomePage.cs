@@ -283,19 +283,21 @@ namespace HugeLauncher.Ui.Pages
                 {
                     t.Cursor = Cursors.Hand;
                     t.ToolTip = "点一下打卡";
+                    // 只有「今天且还没打卡」的格子能点：
+                    // 以前每个格子都挂了点击，点 12 号也会把今天打卡，还把 12 号画成已打卡
+                    var cell = t;
+                    cell.MouseLeftButtonUp += delegate
+                    {
+                        if (Checkin.IsChecked(day)) return;
+                        Checkin.MarkToday();
+                        cell.Text = d + " ●";
+                        cell.FontWeight = FontWeights.Bold;
+                        cell.Cursor = Cursors.Arrow;
+                        cell.ToolTip = null;
+                        UpdateCheckinLine(line);
+                    };
                 }
                 grid.Children.Add(t);
-                var cell = t;
-                cell.MouseLeftButtonUp += delegate
-                {
-                    if (Checkin.IsChecked(day)) return;
-                    Checkin.MarkToday();
-                    cell.Text = d + " ●";
-                    cell.FontWeight = FontWeights.Bold;
-                    cell.Cursor = Cursors.Arrow;
-                    cell.ToolTip = null;
-                    UpdateCheckinLine(line);
-                };
             }
             Grid.SetRow(grid, 1);
             g.Children.Add(grid);
