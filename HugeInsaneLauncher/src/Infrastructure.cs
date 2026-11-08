@@ -527,7 +527,7 @@ namespace HugeLauncher
                 r = DownloadStreamed(t, bytesCallback);
             if (r < 0)
             {
-                // 分块下载保留现场（dest + .hilpart）供断点续传?                // 整文件下载删掉残留的不完整文件，避免半截文件留盘
+                // 分块下载保留现场（dest + .hilpart）供断点续传；整文件下载删掉残留的不完整文件，避免半截文件留盘
                 if (!chunked) { try { if (File.Exists(t.Dest)) File.Delete(t.Dest); } catch { } }
             }
             return r;
@@ -649,29 +649,35 @@ namespace HugeLauncher
         // 大文件分块并行下载（前提?ProbeRange 已确认支?Range。
         static long DownloadChunked(DownloadTask t, Action<long> bytesCallback)
         {
-            // 镜像不一定支?Range（BMCLAPI 分流节点常直接回 200）：先探测，不支持就移出轮换?            // 免得每个轮到镜像的分块都白跑一次完整请。
-        string mirror = t.Mirror;
+            // 镜像不一定支持 Range（BMCLAPI 分流节点常直接回 200）：先探测，不支持就移出轮换，
+            // 免得每个轮到镜像的分块都白跑一次完整请求。
+            string mirror = t.Mirror;
             if (!string.IsNullOrEmpty(mirror) && !ProbeRange(mirror)) mirror = null;
             int chunks = t.Size >= BigFileThreshold ? 8 : 4;
             long chunkLen = (t.Size + chunks - 1) / chunks;
-            // 断点续传：有现场则跳过已下完的分块、半拉子分块从断点续?            long[] resumed = ResumeLoad(t, chunks);
-            // 预分配总长，各分块 seek 到自己的偏移写（已存在的现场文件 SetLength 等长不毁内容。
-        using (var fs = RetryIo(() => new FileStream(t.Dest, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite)))
+            // 断点续传：有现场则跳过已下完的分块、半拉子分块从断点续（resumed 可能为全零）
+            long[] resumed = ResumeLoad(t, chunks);
+            using (var fs = RetryIo(() => new FileStream(t.Dest, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite)))
                 fs.SetLength(t.Size);
+
             var results = new bool[chunks];
             var threads = new Thread[chunks];
             for (int i = 0; i < chunks; i++)
             {
                 int idx = i;
                 long start = i * chunkLen;
-                long end = Math.Min(t.Size, start + chunkLen) - 1; // 含端?                threads[i] = new Thread(delegate() { results[idx] = DownloadChunk(t, mirror, idx, start, end, resumed, bytesCallback); });
+                long end = Math.Min(t.Size, start + chunkLen) - 1;   // 含端点
+                threads[i] = new Thread(delegate() { results[idx] = DownloadChunk(t, mirror, idx, start, end, resumed, bytesCallback); });
                 threads[i].IsBackground = true;
                 threads[i].Start();
             }
             for (int i = 0; i < chunks; i++) threads[i].Join();
-            for (int i = 0; i < chunks; i++) if (!results[i]) return -1;   // 保留现场等下次续?            // 并行乱序写无法边下边校，最后一次性读盘校。
-        if (Verify(t.Dest, t.Sha1, t.Size)) { ResumeClear(t); return t.Size; }
-            // 校验失败说明内容不可信，连现场一起清掉重?            ResumeClear(t);
+            for (int i = 0; i < chunks; i++) if (!results[i]) return -1;   // 保留现场等下次续传
+
+            // 并行乱序写没法边下边校验，最后一次性读盘校验。
+            if (Verify(t.Dest, t.Sha1, t.Size)) { ResumeClear(t); return t.Size; }
+            // 校验失败说明内容不可信：连现场一起清掉重下。
+            ResumeClear(t);
             try { RetryIo(() => { File.Delete(t.Dest); return 0; }); } catch { }
             return -1;
         }
@@ -744,7 +750,7 @@ namespace HugeLauncher
         double lastMb;
         Action<long, long, double> progress; // done, total, MB/s
         int maxWorkers;                      // 本次 Run ?workers，作为动态上限的天花?
-        // 自适应并发：全局动态上限（429/403 减半、下?4；成功后每文?+1 缓慢回升?        // 读写一律走 Interlocked，故用普通静态字段（volatile ?ref 传递会触发 CS0420。
+        // 自适应并发：全局动态上限（429/403 减半、最少 4；成功后每个文件 +1 缓慢回升）。
         static int dynLimit = 64;
         static int active;                 // 当前活跃下载。
         static long lastThrottleTicks;     // 上次限流时间
@@ -813,6 +819,13 @@ namespace HugeLauncher
                 try
                 {
                     r = Net.DownloadFile(t, delegate(long n) { Interlocked.Add(ref bytesTotal, n); });
+                }
+                catch (Exception ex)
+                {
+                    // 任何异常都不许把工作线程打死：标记这个文件失败，继续下一个。
+                    // 之前这里是 try/finally，异常逃出线程 → 整个下载队列卡死（日志里的 NRE 就是这么来的）。
+                    r = -1;
+                    try { HilLog.Write("[下载] 失败 " + t.Url + " : " + ex.GetType().Name + " " + ex.Message); } catch { }
                 }
                 finally { Interlocked.Decrement(ref active); }
                 if (r < 0) lock (failures) failures.Add(t.Url);

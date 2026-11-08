@@ -19,7 +19,7 @@ namespace HugeLauncher.Ui
     {
         const string BrandName = "Huge Insane Launcher";
         // 版本号规则：年份.月份.该月第几个版本（当月首个省略末项，第二个为 1）
-        public const string Version = "26.11.5";
+        public const string Version = "26.11.6";
         public const string Channel = "Release";   // 渠道徽章：Alpha/Beta/Release
 
         Config cfg;
