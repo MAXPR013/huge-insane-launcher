@@ -413,6 +413,35 @@ namespace HugeLauncher.Ui
             if (b != null) b.CornerRadius = FaceRadius();
         }
 
+        // 霜面皮肤下，主题色按钮（启动！！/下一步/保存…）不能套用「白色半透明」的通用底/悬停色：
+        // 一悬停就变成一块透明白，移开还会停在那里（因为离开时也回到同一个白色）。
+        bool IsAccentFace()
+        {
+            if (normalBg.A == 0) return false;
+            Color acc = ThemeManager.CurrentColor;
+            return normalBg.R == acc.R && normalBg.G == acc.G && normalBg.B == acc.B;
+        }
+
+        Color FrostBaseColor()
+        {
+            if (IsAccentFace())
+            {
+                Color acc = ThemeManager.CurrentColor;
+                return Color.FromArgb(150, acc.R, acc.G, acc.B);
+            }
+            return ((SolidColorBrush)Frost.Button).Color;
+        }
+
+        Color FrostHoverColor()
+        {
+            if (IsAccentFace())
+            {
+                Color acc = Palette.Lighten(ThemeManager.CurrentColor, 0.10);
+                return Color.FromArgb(190, acc.R, acc.G, acc.B);
+            }
+            return ((SolidColorBrush)Frost.ButtonHover).Color;
+        }
+
         // 按当前开关/选中态刷新颜色（普通整底 / 玻璃罩层半透明）
         void RefreshStateColors()
         {
@@ -420,9 +449,7 @@ namespace HugeLauncher.Ui
             {
                 Color acc = ThemeManager.CurrentColor;
                 bool accent = normalBg.R == acc.R && normalBg.G == acc.G && normalBg.B == acc.B;
-                Color fb = accent
-                    ? Color.FromArgb(150, acc.R, acc.G, acc.B)
-                    : ((SolidColorBrush)Frost.Button).Color;
+                Color fb = FrostBaseColor();
                 bgBrush.Color = isChecked ? Color.FromArgb(180, acc.R, acc.G, acc.B) : fb;
                 fgBrush.Color = accent ? Colors.White : normalFg;
                 return;
@@ -524,7 +551,7 @@ namespace HugeLauncher.Ui
         void OnMouseEnter(object sender, MouseEventArgs e)
         {
             if (!enabledFlag || isChecked) return;
-            Color to = Frost.On ? ((SolidColorBrush)Frost.ButtonHover).Color : FaceColor(hoverBg);
+            Color to = Frost.On ? FrostHoverColor() : FaceColor(hoverBg);
             Ani.Start(aniKey + "c", Ani.AaColor(bgBrush, to, 100), Ani.AaColor(fgBrush, hoverFg, 100));
             SpringEngine.Go(pressSpring, HoverScale, ApplyPressSpring);
         }
@@ -532,7 +559,7 @@ namespace HugeLauncher.Ui
         void OnMouseLeave(object sender, MouseEventArgs e)
         {
             if (!enabledFlag || isChecked) return;
-            Color to = Frost.On ? ((SolidColorBrush)Frost.Button).Color : FaceColor(normalBg);
+            Color to = Frost.On ? FrostBaseColor() : FaceColor(normalBg);
             Ani.Start(aniKey + "c", Ani.AaColor(bgBrush, to, 200), Ani.AaColor(fgBrush, normalFg, 200));
             SpringEngine.Go(pressSpring, 1.0, ApplyPressSpring);
         }
