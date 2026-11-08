@@ -442,6 +442,14 @@ namespace HugeLauncher.Ui
             return ((SolidColorBrush)Frost.ButtonHover).Color;
         }
 
+        // 霜面下主题色按钮的文字色：底色是半透明主题色 → 文字恒为白，
+        // 不能跟着 SetColors 传进来的 hoverFg（很多地方 hoverFg 是深色，会在悬停瞬间变黑）
+        Color FrostFg(bool hover)
+        {
+            if (IsAccentFace()) return Colors.White;
+            return hover ? hoverFg : normalFg;
+        }
+
         // 按当前开关/选中态刷新颜色（普通整底 / 玻璃罩层半透明）
         void RefreshStateColors()
         {
@@ -552,7 +560,8 @@ namespace HugeLauncher.Ui
         {
             if (!enabledFlag || isChecked) return;
             Color to = Frost.On ? FrostHoverColor() : FaceColor(hoverBg);
-            Ani.Start(aniKey + "c", Ani.AaColor(bgBrush, to, 100), Ani.AaColor(fgBrush, hoverFg, 100));
+            Color fgTo = Frost.On ? FrostFg(true) : hoverFg;
+            Ani.Start(aniKey + "c", Ani.AaColor(bgBrush, to, 100), Ani.AaColor(fgBrush, fgTo, 100));
             SpringEngine.Go(pressSpring, HoverScale, ApplyPressSpring);
         }
 
@@ -560,7 +569,8 @@ namespace HugeLauncher.Ui
         {
             if (!enabledFlag || isChecked) return;
             Color to = Frost.On ? FrostBaseColor() : FaceColor(normalBg);
-            Ani.Start(aniKey + "c", Ani.AaColor(bgBrush, to, 200), Ani.AaColor(fgBrush, normalFg, 200));
+            Color fgTo = Frost.On ? FrostFg(false) : normalFg;
+            Ani.Start(aniKey + "c", Ani.AaColor(bgBrush, to, 200), Ani.AaColor(fgBrush, fgTo, 200));
             SpringEngine.Go(pressSpring, 1.0, ApplyPressSpring);
         }
 

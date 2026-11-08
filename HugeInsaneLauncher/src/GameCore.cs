@@ -675,6 +675,17 @@ namespace HugeLauncher
             throw new Exception("Java 运行时未安装，请先下载版本");
         }
 
+        // 写 @argfile 时给单个 token 加引号。必须覆盖 '#'：
+        // JVM 的 argfile 把 # 当注释起点，"1.21.1#/1.21.1#.jar" 会被整段截掉 →
+        // classpath 丢失，--username 被当成 JVM 选项，弹「Could not create the Java
+        // Virtual Machine」。副本版本（# 后缀）以前每启动必崩就是它。
+        static string ArgFileToken(string a)
+        {
+            if (string.IsNullOrEmpty(a)) return "\"\"";
+            bool need = a.IndexOf(' ') >= 0 || a.IndexOf('\t') >= 0 || a.IndexOf('#') >= 0 || a.IndexOf('"') >= 0;
+            if (!need) return a;
+            return "\"" + a.Replace("\"", "\\\"") + "\"";
+        }
         // account = null 时退回纯离线（沿用历史硬编码 UUID）；外置账号则注入 authlib-injector
         public static Process Launch(string id, string username, Config cfg, Action<string> log, string instanceName = null, Account account = null)
         {
@@ -755,7 +766,7 @@ namespace HugeLauncher
             string argFile = Path.Combine(Paths.McDir, "launch.args");
             var sb = new StringBuilder();
             foreach (var a in finalArgs)
-                sb.AppendLine(a.IndexOf(' ') >= 0 ? "\"" + a + "\"" : a);
+                sb.AppendLine(ArgFileToken(a));
             // @argfile 的读取编码 = JVM 平台默认编码：Java 18+（JEP 400，delta=21/epsilon=25）固定 UTF-8；
             // Java 17 及更早（gamma/alpha/beta/legacy）用系统 ANSI（中文 Windows 是 GBK）。
             // 写错编码会让中文路径（如整合包同名版本）变乱码 → joptsimple 报目录不存在秒退
