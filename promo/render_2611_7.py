@@ -135,12 +135,12 @@ def main():
     timeline = []   # (kind, payload, frames)
 
     # 开场 + 两句宣言
-    timeline.append(("img", title_card(), 30))
-    timeline.append(("img", card_big("更Huge", 190), 30))
-    timeline.append(("img", card_big("也更 Insane", 230), 30))
+    timeline.append(("img", title_card(), 90))
+    timeline.append(("img", card_big("更Huge", 190), 90))
+    timeline.append(("img", card_big("也更 Insane", 230), 90))
 
     for clip, dur, big, head, body in SHOTS:
-        timeline.append(("img", card_big(big, 190), 30))
+        timeline.append(("img", card_big(big, 190), 90))
         n = int(round(dur * FPS))
         d = os.path.join(tmp, clip.replace(".mp4", "").replace("6", "six"))
         got = frame_dir(clip, dur, d)
