@@ -19,8 +19,8 @@ namespace HugeLauncher.Ui
     {
         const string BrandName = "Huge Insane Launcher";
         // 版本号规则：年份.月份.该月第几个版本（当月首个省略末项，第二个为 1）
-        public const string Version = "26.11.6";
-        public const string Channel = "Release";   // 渠道徽章：Alpha/Beta/Release
+        public const string Version = "26.11.7";
+        public const string Channel = "Alpha";   // 渠道徽章：Alpha/Beta/Release
 
         Config cfg;
         DarkComboBox userCombo;
@@ -2870,6 +2870,25 @@ namespace HugeLauncher.Ui
                         launchCfg.MemoryMb = memMb;
                         launchCfg.Priority = prio;
                         if (gcb.HasValue) launchCfg.GcBoost = gcb.Value;
+                    }
+
+                    // 启动前内存预检：可用内存不够时会弹「Could not create the Java Virtual Machine」，
+                    // 那个报错看不出原因，所以先问一句要不要继续。
+                    string memWarn = GameCore.MemoryWarning(launchId, launchCfg);
+                    if (memWarn != null)
+                    {
+                        bool go = true;
+                        Dispatcher.Invoke(new Action(delegate
+                        {
+                            go = MessageBox.Show(this, memWarn, "内存不足", MessageBoxButton.YesNo,
+                                MessageBoxImage.Warning) == MessageBoxResult.Yes;
+                        }));
+                        if (!go)
+                        {
+                            AppendLog("已取消启动：可用内存不足");
+                            return;
+                        }
+                        AppendLog("内存不足提示已被用户忽略，继续启动");
                     }
 
                     var proc = GameCore.Launch(launchId, finalAcc.Name, launchCfg, AppendLog, instanceName, finalAcc);

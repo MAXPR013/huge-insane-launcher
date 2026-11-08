@@ -655,6 +655,44 @@ namespace HugeLauncher
             return File.Exists(libCfg);
         }
 
+        // 启动前内存预检：可用物理内存明显不够时要先提示，否则 JVM 会直接弹
+        // 「Could not create the Java Virtual Machine」（用户报告过，报错完全看不出是内存）。
+        // 返回 null 表示没问题；否则返回给用户看的提示文案。读不到内存就不打扰。
+        public static string MemoryWarning(string id, Config cfg)
+        {
+            try
+            {
+                long avail = Env.AvailPhysMb();
+                if (avail <= 0) return null;
+                long total = Env.TotalPhysMb();
+                int mem = cfg.MemoryMb;
+                try
+                {
+                    int vm; string vp; bool? vg;
+                    if (HugeLauncher.Ui.Pages.VersionSettings.TryLoad(id, out vm, out vp, out vg)) mem = vm;
+                }
+                catch { }
+                // JVM 本体 + 元空间 + 线程栈 + 本地库，大概还要 400~600MB
+                const int overhead = 512;
+                if (avail >= mem + overhead) return null;
+
+                long suggest = Math.Max(1024, Math.Min(mem, (avail - 384) / 128 * 128));
+                if (suggest >= mem) suggest = Math.Max(1024, mem - 512);
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("本次给游戏分配 " + mem + " MB 内存，但当前系统可用物理内存只有 " + avail + " MB（共 " + total + " MB）。");
+                sb.AppendLine();
+                sb.AppendLine("直接启动很可能失败——游戏会弹窗「Could not create the Java Virtual Machine」，");
+                sb.AppendLine("这个报错看不出是内存不够，容易误以为是 Java 装坏了。");
+                sb.AppendLine();
+                sb.AppendLine("建议：");
+                sb.AppendLine("· 先关掉浏览器、其他游戏等占内存的程序再启动；");
+                sb.AppendLine("· 或者到「版本设置」把内存调到 " + suggest + " MB 左右再试。");
+                sb.AppendLine();
+                sb.AppendLine("仍要继续启动吗？");
+                return sb.ToString();
+            }
+            catch { return null; }
+        }
         // 按版本声明的 javaVersion 组件选运行时（1.20.1→gamma=Java17，新版本→更高），
         // 缺了现场自动补装；版本没声明才退回旧的单一 jre 目录。
         static string PickJavaw(ResolvedVersion rv, Action<string> log)

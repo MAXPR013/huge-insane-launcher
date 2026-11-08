@@ -880,6 +880,14 @@ namespace HugeLauncher
             if (GlobalMemoryStatusEx(ms)) return (long)(ms.TotalPhys / 1048576);
             return 8192;
         }
+
+        // 当前可用物理内存（MB）；读不到返回 -1（调用方按「不知道」处理，不弹提示）
+        public static long AvailPhysMb()
+        {
+            var ms = new MemStatus();
+            if (GlobalMemoryStatusEx(ms)) return (long)(ms.AvailPhys / 1048576);
+            return -1;
+        }
     }
 }
 
